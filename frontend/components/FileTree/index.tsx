@@ -37,39 +37,38 @@ const FileTreeNode = memo(({ node, depth, selectedId, onSelect }: {
   if (node.isFile && node.fileNode) {
     const fn = node.fileNode;
     const roleDef = ROLES[fn.role] ?? ROLES.default;
-    const ext = fn.name.split('.').pop() ?? '';
 
     return (
       <div
         onClick={() => onSelect?.(fn)}
         style={{
           paddingLeft: depth * 14 + 10, paddingRight: 10,
-          paddingTop: 4, paddingBottom: 4,
-          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
-          background: isSelected ? T.bgActive : 'transparent',
-          borderLeft: `2px solid ${isSelected ? roleDef.color : 'transparent'}`,
-          transition: 'background 0.1s',
+          paddingTop: 6, paddingBottom: 6,
+          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+          backgroundColor: isSelected ? T.bgHover : 'transparent',
+          borderLeft: `2px solid ${isSelected ? T.text : 'transparent'}`,
+          transition: 'background-color 0.15s',
         }}
-        onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = T.bgHover; }}
-        onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+        onMouseEnter={e => { if (!isSelected) e.currentTarget.style.backgroundColor = T.bgHover; }}
+        onMouseLeave={e => { if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent'; }}
       >
         <span style={{
-          width: 5, height: 5, borderRadius: '50%',
-          background: roleDef.color, flexShrink: 0, opacity: 0.9,
+          width: 6, height: 6, borderRadius: '50%',
+          backgroundColor: roleDef.color, flexShrink: 0,
         }} />
         <span style={{
-          fontSize: 11.5, fontFamily: T.mono,
+          fontSize: 12, fontFamily: T.sans,
           color: isSelected ? T.text : T.textMuted,
-          fontWeight: isSelected ? 500 : 400,
+          fontWeight: isSelected ? 600 : 500,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
         }}>
           {fn.name}
         </span>
         {(fn.is_hub || fn.is_entry || fn.is_orphan) && (
-          <span style={{ fontSize: 9, flexShrink: 0, opacity: 0.7 }}>
-            {fn.is_hub && <i className="ti ti-antenna" style={{ color: T.amber, fontSize: 9 }} />}
-            {fn.is_entry && <i className="ti ti-triangle-inverted" style={{ color: T.green, fontSize: 9 }} />}
-            {fn.is_orphan && <i className="ti ti-unlink" style={{ color: T.red, fontSize: 9 }} />}
+          <span style={{ fontSize: 10, flexShrink: 0, opacity: 0.6, display: 'flex', gap: 4 }}>
+            {fn.is_hub && <i className="ti ti-antenna" style={{ color: T.text, fontSize: 11 }} />}
+            {fn.is_entry && <i className="ti ti-triangle-inverted" style={{ color: T.text, fontSize: 11 }} />}
+            {fn.is_orphan && <i className="ti ti-unlink" style={{ color: T.textDim, fontSize: 11 }} />}
           </span>
         )}
       </div>
@@ -87,25 +86,25 @@ const FileTreeNode = memo(({ node, depth, selectedId, onSelect }: {
         onClick={() => setOpen(!open)}
         style={{
           paddingLeft: depth * 14 + 10, paddingRight: 10,
-          paddingTop: 5, paddingBottom: 5,
+          paddingTop: 6, paddingBottom: 6,
           cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-          transition: 'background 0.1s',
+          transition: 'background-color 0.15s',
         }}
-        onMouseEnter={e => e.currentTarget.style.background = T.bgHover}
-        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        onMouseEnter={e => e.currentTarget.style.backgroundColor = T.bgHover}
+        onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
       >
         <i className={`ti ${open ? 'ti-chevron-down' : 'ti-chevron-right'}`}
-          style={{ fontSize: 10, color: T.textDim, width: 10, flexShrink: 0 }} />
+          style={{ fontSize: 12, color: T.textDim, width: 12, flexShrink: 0 }} />
         <i className={`ti ${open ? 'ti-folder-open' : 'ti-folder'}`}
-          style={{ fontSize: 12, color: T.amber, flexShrink: 0, opacity: 0.75 }} />
+          style={{ fontSize: 14, color: T.textMuted, flexShrink: 0 }} />
         <span style={{
-          fontSize: 12, fontFamily: T.sans, fontWeight: 500,
-          color: T.textMuted, whiteSpace: 'nowrap',
+          fontSize: 13, fontFamily: T.sans, fontWeight: 600,
+          color: T.text, whiteSpace: 'nowrap',
           overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {node.name}
         </span>
-        <span style={{ marginLeft: 'auto', fontSize: 10, color: T.textDim, fontFamily: T.mono, flexShrink: 0 }}>
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textDim, fontFamily: T.sans, fontWeight: 500, flexShrink: 0 }}>
           {children.length}
         </span>
       </div>
@@ -133,61 +132,62 @@ export default function FileTree({ nodes, selectedId, onSelect }: {
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <div style={{
-        padding: '12px 12px 8px',
+        padding: '16px 16px 12px',
         borderBottom: `1px solid ${T.border}`,
         flexShrink: 0,
       }}>
         <div style={{
-          fontSize: 10, fontFamily: T.mono, color: T.textDim,
-          letterSpacing: '0.08em', fontWeight: 500, marginBottom: 8,
+          fontSize: 11, fontFamily: T.sans, color: T.textDim,
+          letterSpacing: '0.05em', fontWeight: 600, marginBottom: 12,
           textTransform: 'uppercase',
         }}>
           Explorer · {nodes.length} files
         </div>
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          background: T.bgSurface, border: `1px solid ${T.border}`,
-          borderRadius: 6, padding: '5px 8px',
+          display: 'flex', alignItems: 'center', gap: 8,
+          backgroundColor: T.bgSurface, border: `1px solid ${T.border}`,
+          borderRadius: 8, padding: '6px 10px',
         }}>
-          <i className="ti ti-search" style={{ fontSize: 11, color: T.textDim }} />
+          <i className="ti ti-search" style={{ fontSize: 14, color: T.textDim }} />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Filter files…"
             style={{
-              background: 'transparent', border: 'none', outline: 'none',
-              color: T.text, fontFamily: T.mono, fontSize: 11, flex: 1, minWidth: 0,
+              backgroundColor: 'transparent', border: 'none', outline: 'none',
+              color: T.text, fontFamily: T.sans, fontSize: 13, flex: 1, minWidth: 0,
             }}
           />
           {search && (
-            <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: T.textDim, cursor: 'pointer', padding: 0, lineHeight: 1 }}>
-              <i className="ti ti-x" style={{ fontSize: 11 }} />
+            <button onClick={() => setSearch('')} style={{ backgroundColor: 'transparent', border: 'none', color: T.textDim, cursor: 'pointer', padding: 0, lineHeight: 1 }}>
+              <i className="ti ti-x" style={{ fontSize: 13 }} />
             </button>
           )}
         </div>
       </div>
 
       {/* Tree or filtered list */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {filtered ? (
           filtered.length === 0
-            ? <div style={{ padding: '20px 16px', fontSize: 11, color: T.textDim, fontFamily: T.mono }}>No matches</div>
+            ? <div style={{ padding: '24px', fontSize: 13, color: T.textDim, fontFamily: T.sans, textAlign: 'center' }}>No matches found</div>
             : filtered.map(fn => {
               const roleDef = ROLES[fn.role] ?? ROLES.default;
               return (
                 <div key={fn.id}
                   onClick={() => onSelect?.(fn)}
                   style={{
-                    padding: '5px 12px', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 7,
-                    background: selectedId === fn.id ? T.bgActive : 'transparent',
-                    borderLeft: `2px solid ${selectedId === fn.id ? roleDef.color : 'transparent'}`,
+                    padding: '8px 16px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    backgroundColor: selectedId === fn.id ? T.bgHover : 'transparent',
+                    borderLeft: `2px solid ${selectedId === fn.id ? T.text : 'transparent'}`,
+                    transition: 'background-color 0.15s'
                   }}
-                  onMouseEnter={e => { if (selectedId !== fn.id) e.currentTarget.style.background = T.bgHover; }}
-                  onMouseLeave={e => { if (selectedId !== fn.id) e.currentTarget.style.background = 'transparent'; }}
+                  onMouseEnter={e => { if (selectedId !== fn.id) e.currentTarget.style.backgroundColor = T.bgHover; }}
+                  onMouseLeave={e => { if (selectedId !== fn.id) e.currentTarget.style.backgroundColor = 'transparent'; }}
                 >
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: roleDef.color, flexShrink: 0 }} />
-                  <span style={{ fontSize: 11, fontFamily: T.mono, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: roleDef.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, fontFamily: T.sans, fontWeight: 500, color: selectedId === fn.id ? T.text : T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                     {fn.path}
                   </span>
                 </div>
@@ -202,16 +202,16 @@ export default function FileTree({ nodes, selectedId, onSelect }: {
 
       {/* Legend */}
       <div style={{
-        padding: '8px 12px', borderTop: `1px solid ${T.border}`,
-        display: 'flex', gap: 10, flexWrap: 'wrap',
+        padding: '12px 16px', borderTop: `1px solid ${T.border}`,
+        display: 'flex', gap: 12, flexWrap: 'wrap', backgroundColor: T.bgElevated
       }}>
         {[
-          { color: T.amber, icon: 'ti-antenna', label: 'hub' },
-          { color: T.green, icon: 'ti-triangle-inverted', label: 'entry' },
-          { color: T.red,   icon: 'ti-unlink',            label: 'orphan' },
+          { icon: 'ti-antenna', label: 'hub' },
+          { icon: 'ti-triangle-inverted', label: 'entry' },
+          { icon: 'ti-unlink', label: 'orphan' },
         ].map(l => (
-          <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: T.textDim, fontFamily: T.mono }}>
-            <i className={`ti ${l.icon}`} style={{ fontSize: 10, color: l.color }} /> {l.label}
+          <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: T.textMuted, fontFamily: T.sans, fontWeight: 500 }}>
+            <i className={`ti ${l.icon}`} style={{ fontSize: 12, color: T.textDim }} /> {l.label}
           </span>
         ))}
       </div>

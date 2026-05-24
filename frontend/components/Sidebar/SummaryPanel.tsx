@@ -1,8 +1,7 @@
-// SummaryPanel.tsx
 import React from 'react';
 import { T } from '../../theme';
 import { AnalyzeResult } from '../../types';
-import SidebarReadme from './SidebarReadme'; // adjust path as needed
+import SidebarReadme from './SidebarReadme';
 
 interface SummaryPanelProps {
   data: AnalyzeResult | null;
@@ -28,15 +27,15 @@ export default function SummaryPanel({
   return (
     <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
       {/* Project metadata section */}
-      <div style={{ padding: '20px 16px 0' }}>
+      <div style={{ padding: '24px 20px 0' }}>
         {/* Project name */}
         <div
           style={{
-            fontSize: 18,
-            fontWeight: 600,
+            fontSize: 22,
+            fontWeight: 700,
             color: T.text,
-            letterSpacing: '-0.025em',
-            marginBottom: 4,
+            letterSpacing: '-0.02em',
+            marginBottom: 6,
             lineHeight: 1.2,
           }}
         >
@@ -44,9 +43,9 @@ export default function SummaryPanel({
         </div>
         <div
           style={{
-            fontSize: 12.5,
+            fontSize: 14,
             color: T.textMuted,
-            marginBottom: 12,
+            marginBottom: 16,
             lineHeight: 1.5,
           }}
         >
@@ -61,19 +60,25 @@ export default function SummaryPanel({
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: 5,
-            fontSize: 10.5,
-            fontFamily: T.mono,
-            color: T.cyan,
+            gap: 6,
+            fontSize: 12,
+            fontFamily: T.sans,
+            fontWeight: 600,
+            color: T.text,
             textDecoration: 'none',
-            marginBottom: 16,
+            marginBottom: 24,
+            padding: '6px 12px',
+            border: `1px solid ${T.border}`,
+            borderRadius: 100,
+            background: T.bgSurface,
+            transition: 'background 0.15s'
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
-          onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+          onMouseEnter={(e) => (e.currentTarget.style.background = T.bgHover)}
+          onMouseLeave={(e) => (e.currentTarget.style.background = T.bgSurface)}
         >
-          <i className="ti ti-brand-github" style={{ fontSize: 12 }} />
+          <i className="ti ti-brand-github" style={{ fontSize: 14 }} />
           {meta.owner}/{meta.repo}
-          <i className="ti ti-external-link" style={{ fontSize: 10 }} />
+          <i className="ti ti-external-link" style={{ fontSize: 12, color: T.textDim, marginLeft: 2 }} />
         </a>
 
         {/* Stats row */}
@@ -81,8 +86,8 @@ export default function SummaryPanel({
           style={{
             display: 'grid',
             gridTemplateColumns: '1fr 1fr 1fr',
-            gap: 6,
-            marginBottom: 16,
+            gap: 10,
+            marginBottom: 24,
           }}
         >
           <StatCard label="Files" value={stats.total_files} />
@@ -90,37 +95,38 @@ export default function SummaryPanel({
           <StatCard
             label="Orphans"
             value={stats.orphan_count}
-            accent={stats.orphan_count > 0 ? T.amber : undefined}
           />
         </div>
 
         {/* Tech stack pills */}
         {summary.tech_stack?.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 24 }}>
             <div
               style={{
-                fontSize: 10,
-                fontFamily: T.mono,
-                color: T.textDim,
-                letterSpacing: '0.08em',
+                fontSize: 11,
+                fontFamily: T.sans,
+                fontWeight: 600,
+                color: T.textMuted,
+                letterSpacing: '0.05em',
                 textTransform: 'uppercase',
-                marginBottom: 7,
+                marginBottom: 10,
               }}
             >
               Stack
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {summary.tech_stack.slice(0, 10).map((t: string) => (
                 <span
                   key={t}
                   style={{
-                    fontSize: 10.5,
-                    fontFamily: T.mono,
-                    color: T.textMuted,
-                    background: T.bgSurface,
+                    fontSize: 12,
+                    fontFamily: T.sans,
+                    fontWeight: 500,
+                    color: T.text,
+                    background: T.bgHover,
                     border: `1px solid ${T.border}`,
-                    padding: '2px 7px',
-                    borderRadius: 4,
+                    padding: '4px 10px',
+                    borderRadius: 6,
                   }}
                 >
                   {t}
@@ -133,12 +139,15 @@ export default function SummaryPanel({
         {/* Description */}
         <p
           style={{
-            fontSize: 12.5,
+            fontSize: 14,
             color: T.textMuted,
-            lineHeight: 1.7,
-            margin: '0 0 20px',
-            borderLeft: `2px solid ${T.border}`,
-            paddingLeft: 12,
+            lineHeight: 1.6,
+            margin: '0 0 24px',
+            borderLeft: `2px solid ${T.borderHi}`,
+            paddingLeft: 16,
+            background: T.bgHover,
+            padding: '12px 16px',
+            borderRadius: '0 8px 8px 0'
           }}
         >
           {summary.description}
@@ -146,15 +155,16 @@ export default function SummaryPanel({
 
         {/* Entry points */}
         {summary.entry_points?.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 24 }}>
             <div
               style={{
-                fontSize: 10,
-                fontFamily: T.mono,
-                color: T.textDim,
-                letterSpacing: '0.08em',
+                fontSize: 11,
+                fontFamily: T.sans,
+                fontWeight: 600,
+                color: T.textMuted,
+                letterSpacing: '0.05em',
                 textTransform: 'uppercase',
-                marginBottom: 7,
+                marginBottom: 10,
               }}
             >
               Entry points
@@ -163,43 +173,50 @@ export default function SummaryPanel({
               <div
                 key={ep}
                 style={{
-                  fontSize: 11,
-                  fontFamily: T.mono,
-                  color: T.green,
-                  padding: '3px 0',
+                  fontSize: 13,
+                  fontFamily: T.sans,
+                  fontWeight: 500,
+                  color: T.text,
+                  padding: '4px 0',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 6,
+                  gap: 8,
                 }}
               >
-                <i className="ti ti-triangle-inverted" style={{ fontSize: 9, flexShrink: 0 }} />
+                <i className="ti ti-triangle-inverted" style={{ fontSize: 12, color: T.textDim, flexShrink: 0 }} />
                 {ep}
               </div>
             ))}
           </div>
         )}
 
-        <div style={{ height: 1, background: T.border, margin: '0 0 14px' }} />
+        <div style={{ height: 1, background: T.border, margin: '0 0 20px' }} />
 
-        {/* Architecture diagram button (keep as is) */}
-        <div style={{ marginBottom: 16 }}>
+        {/* Architecture diagram button */}
+        <div style={{ marginBottom: 24 }}>
           <button
             onClick={generateArchitecture}
             disabled={archLoading}
-            className="rg-btn primary"
-            style={{ justifyContent: 'center', gap: 6, width: '100%' }}
+            style={{ 
+              justifyContent: 'center', gap: 8, width: '100%',
+              background: '#111', color: '#fff', border: 'none', borderRadius: 100,
+              padding: '12px', fontSize: 13, fontWeight: 600, cursor: archLoading ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', transition: 'opacity 0.15s'
+            }}
+            onMouseEnter={e => { if(!archLoading) e.currentTarget.style.opacity = '0.85'; }}
+            onMouseLeave={e => e.currentTarget.style.opacity = '1'}
           >
             {archLoading ? (
               <>
                 <i
                   className="ti ti-loader-2"
-                  style={{ fontSize: 12, animation: 'spin 0.8s linear infinite' }}
+                  style={{ fontSize: 14, animation: 'spin 0.6s linear infinite' }}
                 />
                 Building diagram…
               </>
             ) : (
               <>
-                <i className="ti ti-sitemap" style={{ fontSize: 12 }} />
+                <i className="ti ti-sitemap" style={{ fontSize: 14 }} />
                 Generate Architecture Diagram
               </>
             )}
@@ -207,7 +224,7 @@ export default function SummaryPanel({
         </div>
       </div>
 
-      {/* README viewer (replaces old inline readme) */}
+      {/* README viewer */}
       <SidebarReadme
         readme={readme}
         readmeLoading={readmeLoading}
@@ -217,43 +234,37 @@ export default function SummaryPanel({
   );
 }
 
-function StatCard({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: number;
-  accent?: string;
-}) {
+function StatCard({ label, value }: { label: string; value: number }) {
   return (
     <div
       style={{
         background: T.bgSurface,
         border: `1px solid ${T.border}`,
-        borderRadius: 8,
-        padding: '10px 10px 8px',
+        borderRadius: 12,
+        padding: '16px 12px 12px',
       }}
     >
       <div
         style={{
-          fontSize: 17,
-          fontWeight: 600,
-          color: accent ?? T.text,
-          fontFamily: T.mono,
+          fontSize: 24,
+          fontWeight: 700,
+          color: T.text,
+          fontFamily: T.sans,
           lineHeight: 1,
-          marginBottom: 4,
+          marginBottom: 6,
+          letterSpacing: '-0.02em'
         }}
       >
         {value.toLocaleString()}
       </div>
       <div
         style={{
-          fontSize: 9.5,
-          fontFamily: T.mono,
+          fontSize: 10,
+          fontFamily: T.sans,
+          fontWeight: 600,
           color: T.textDim,
           textTransform: 'uppercase',
-          letterSpacing: '0.06em',
+          letterSpacing: '0.05em',
         }}
       >
         {label}

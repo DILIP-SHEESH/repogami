@@ -14,26 +14,26 @@ interface NodePanelProps {
 export default function NodePanel({ selectedNode, data, handleNodeClick, runBlast, blastLoading, handleAsk }: NodePanelProps) {
   if (!selectedNode) {
     return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 20, paddingTop: 48 }}>
-        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 24, paddingTop: 48 }}>
+        <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <div style={{
-            width: 44, height: 44, borderRadius: 10, background: T.bgSurface,
+            width: 48, height: 48, borderRadius: 12, background: T.bgSurface,
             border: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 14px',
+            margin: '0 auto 16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
           }}>
-            <i className="ti ti-click" style={{ fontSize: 20, color: T.textDim }} />
+            <i className="ti ti-click" style={{ fontSize: 24, color: T.textDim }} />
           </div>
-          <div style={{ fontSize: 12.5, color: T.textMuted, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 13, color: T.textMuted, lineHeight: 1.6, fontWeight: 500 }}>
             Click any node<br/>to inspect its footprint
           </div>
         </div>
 
         {data && data.stats.top_hubs.length > 0 && (
           <>
-            <div style={{ fontSize: 10, fontFamily: T.mono, color: T.textDim, letterSpacing: '0.08em', marginBottom: 10, textTransform: 'uppercase' }}>
+            <div style={{ fontSize: 11, fontFamily: T.sans, fontWeight: 600, color: T.textMuted, letterSpacing: '0.05em', marginBottom: 12, textTransform: 'uppercase' }}>
               Core Hubs
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {data.stats.top_hubs.slice(0, 6).map(h => {
                 const node = data.graph.nodes.find(x => x.id === h.id);
                 const roleDef = ROLES[node?.role ?? 'default'] ?? ROLES.default;
@@ -42,13 +42,20 @@ export default function NodePanel({ selectedNode, data, handleNodeClick, runBlas
                     key={h.id}
                     className="hub-row"
                     onClick={() => { if (node) handleNodeClick(node); }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                      background: T.bgSurface, border: `1px solid ${T.border}`, borderRadius: 8,
+                      cursor: 'pointer', transition: 'background 0.15s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = T.bgHover}
+                    onMouseLeave={e => e.currentTarget.style.background = T.bgSurface}
                   >
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: roleDef.color, flexShrink: 0 }} />
-                    <span style={{ fontSize: 11.5, fontFamily: T.mono, color: T.textMuted, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: roleDef.color, flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, fontFamily: T.sans, fontWeight: 500, color: T.text, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {h.name}
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                      <span style={{ fontSize: 10, color: T.cyan, fontFamily: T.mono }}>↑{h.indegree}</span>
+                      <span style={{ fontSize: 11, color: T.textMuted, fontFamily: T.sans, fontWeight: 600 }}>↑{h.indegree}</span>
                     </div>
                   </div>
                 );
@@ -63,82 +70,88 @@ export default function NodePanel({ selectedNode, data, handleNodeClick, runBlas
   const roleDef = ROLES[selectedNode.role] ?? ROLES.default;
 
   return (
-    <div style={{ flex: 1, padding: '16px 16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0 }}>
+    <div style={{ flex: 1, padding: '24px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0 }}>
 
       {/* Role badge */}
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: 6,
-        padding: '3px 10px 3px 8px', borderRadius: 999, marginBottom: 14,
-        background: `${roleDef.color}18`, border: `1px solid ${roleDef.color}30`,
-        color: roleDef.color, fontSize: 10.5, fontFamily: T.mono, fontWeight: 500,
+        padding: '4px 12px', borderRadius: 100, marginBottom: 16,
+        background: T.bgHover, border: `1px solid ${T.border}`,
+        color: roleDef.color, fontSize: 11, fontFamily: T.sans, fontWeight: 600,
         alignSelf: 'flex-start',
       }}>
-        <i className={`ti ${roleDef.glyph}`} style={{ fontSize: 11 }} />
+        <i className={`ti ${roleDef.glyph}`} style={{ fontSize: 14 }} />
         {roleDef.label}
       </div>
 
       {/* File name */}
       <div style={{
-        fontSize: 14, fontWeight: 600, color: T.text,
-        marginBottom: 4, wordBreak: 'break-all', lineHeight: 1.3,
+        fontSize: 18, fontWeight: 700, color: T.text,
+        marginBottom: 6, wordBreak: 'break-all', lineHeight: 1.2, letterSpacing: '-0.01em'
       }}>
         {selectedNode.name}
       </div>
 
       {/* Path */}
       <div style={{
-        fontSize: 10.5, fontFamily: T.mono, color: T.textDim,
-        marginBottom: 18, wordBreak: 'break-all', lineHeight: 1.5,
+        fontSize: 12, fontFamily: T.sans, color: T.textDim,
+        marginBottom: 24, wordBreak: 'break-all', lineHeight: 1.5,
       }}>
         {selectedNode.path}
       </div>
 
       {/* Description */}
       <div style={{
-        fontSize: 12, color: T.textMuted, lineHeight: 1.6,
-        padding: '10px 12px', background: T.bgSurface,
-        border: `1px solid ${T.border}`, borderRadius: 8,
-        marginBottom: 16,
+        fontSize: 13, color: T.textMuted, lineHeight: 1.6,
+        padding: '12px 16px', background: T.bgSurface,
+        border: `1px solid ${T.border}`, borderRadius: 12,
+        marginBottom: 24,
       }}>
         {roleDef.desc}
       </div>
 
       {/* Tags */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
-        {selectedNode.is_hub   && <Tag icon="ti-antenna"          color={T.amber}  label="Hub" />}
-        {selectedNode.is_entry && <Tag icon="ti-triangle-inverted" color={T.green}  label="Entry point" />}
-        {selectedNode.is_orphan&& <Tag icon="ti-unlink"           color={T.red}    label="Orphan" />}
-        {selectedNode.is_config&& <Tag icon="ti-settings-2"       color={T.textDim} label="Config" />}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 24 }}>
+        {selectedNode.is_hub   && <Tag icon="ti-antenna"          label="Hub" />}
+        {selectedNode.is_entry && <Tag icon="ti-triangle-inverted"  label="Entry point" />}
+        {selectedNode.is_orphan&& <Tag icon="ti-unlink"           label="Orphan" />}
+        {selectedNode.is_config&& <Tag icon="ti-settings-2"       label="Config" />}
       </div>
 
       {/* Metrics */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
-        <Metric label="Imported by" value={selectedNode.indegree}  color={T.cyan} />
-        <Metric label="Imports"     value={selectedNode.outdegree} color={T.purple} />
-        <Metric label="Role"        value={roleDef.label.slice(0,4)} color={roleDef.color} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 24 }}>
+        <Metric label="Imported by" value={selectedNode.indegree} />
+        <Metric label="Imports"     value={selectedNode.outdegree} />
+        <Metric label="Role"        value={roleDef.label.slice(0,4)} />
       </div>
 
       {/* Blast radius button */}
       <button
         onClick={runBlast}
         disabled={blastLoading}
-        className="rg-btn"
-        style={{ width: '100%', marginBottom: 20, justifyContent: 'center', gap: 7 }}
+        style={{ 
+          width: '100%', marginBottom: 32, justifyContent: 'center', gap: 8,
+          background: '#111', color: '#fff', border: 'none', borderRadius: 100,
+          padding: '12px', fontSize: 13, fontWeight: 600, cursor: blastLoading ? 'not-allowed' : 'pointer',
+          display: 'flex', alignItems: 'center', transition: 'opacity 0.15s'
+        }}
+        onMouseEnter={e => { if(!blastLoading) e.currentTarget.style.opacity = '0.85'; }}
+        onMouseLeave={e => e.currentTarget.style.opacity = '1'}
       >
         {blastLoading
-          ? <><i className="ti ti-loader-2" style={{ fontSize: 13, animation: 'spin 0.8s linear infinite' }} /> Calculating…</>
-          : <><i className="ti ti-ripple" style={{ fontSize: 13 }} /> Blast radius</>
+          ? <><i className="ti ti-loader-2" style={{ fontSize: 14, animation: 'spin 0.6s linear infinite' }} /> Calculating…</>
+          : <><i className="ti ti-ripple" style={{ fontSize: 14 }} /> Blast radius</>
         }
       </button>
 
       {/* Divider */}
-      <div style={{ height: 1, background: T.border, marginBottom: 14 }} />
+      <div style={{ height: 1, background: T.border, marginBottom: 24 }} />
 
       {/* Quick prompts */}
-      <div style={{ fontSize: 10, fontFamily: T.mono, color: T.textDim, letterSpacing: '0.08em', marginBottom: 8, textTransform: 'uppercase' }}>
+      <div style={{ fontSize: 11, fontFamily: T.sans, fontWeight: 600, color: T.textMuted, letterSpacing: '0.05em', marginBottom: 12, textTransform: 'uppercase' }}>
         Ask AI
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {([
           selectedNode.is_orphan ? `Is ${selectedNode.name} safe to delete?` : null,
           selectedNode.is_hub    ? `What breaks if ${selectedNode.name} changes?` : null,
@@ -151,14 +164,14 @@ export default function NodePanel({ selectedNode, data, handleNodeClick, runBlas
             onClick={() => handleAsk(q!)}
             style={{
               textAlign: 'left', background: T.bgSurface, border: `1px solid ${T.border}`,
-              color: T.textMuted, padding: '9px 12px', borderRadius: 7,
-              fontFamily: T.sans, fontSize: 12, cursor: 'pointer',
-              transition: 'all 0.12s', display: 'flex', alignItems: 'flex-start', gap: 8,
+              color: T.textMuted, padding: '12px 16px', borderRadius: 12,
+              fontFamily: T.sans, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+              transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 10,
             }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = T.borderMid; e.currentTarget.style.color = T.text; e.currentTarget.style.background = T.bgHover; }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = T.borderHi; e.currentTarget.style.color = T.text; e.currentTarget.style.background = T.bgHover; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; e.currentTarget.style.background = T.bgSurface; }}
           >
-            <i className="ti ti-arrow-right" style={{ fontSize: 11, color: T.textDim, marginTop: 1, flexShrink: 0 }} />
+            <i className="ti ti-arrow-right" style={{ fontSize: 14, color: T.textDim, flexShrink: 0 }} />
             <span>{q}</span>
           </button>
         ))}
@@ -167,31 +180,31 @@ export default function NodePanel({ selectedNode, data, handleNodeClick, runBlas
   );
 }
 
-function Metric({ label, value, color }: { label: string; value: number | string; color: string }) {
+function Metric({ label, value }: { label: string; value: number | string }) {
   return (
     <div style={{
       background: T.bgSurface, border: `1px solid ${T.border}`,
-      borderRadius: 8, padding: '10px 10px 8px',
+      borderRadius: 12, padding: '12px 12px 10px',
     }}>
-      <div style={{ fontSize: 18, fontWeight: 600, color, fontFamily: T.mono, lineHeight: 1, marginBottom: 4 }}>
+      <div style={{ fontSize: 20, fontWeight: 700, color: T.text, fontFamily: T.sans, lineHeight: 1, marginBottom: 6 }}>
         {value}
       </div>
-      <div style={{ fontSize: 9.5, fontFamily: T.mono, color: T.textDim, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div style={{ fontSize: 10, fontFamily: T.sans, fontWeight: 600, color: T.textDim, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </div>
     </div>
   );
 }
 
-function Tag({ icon, color, label }: { icon: string; color: string; label: string }) {
+function Tag({ icon, label }: { icon: string; label: string }) {
   return (
     <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-      padding: '2px 8px', borderRadius: 4,
-      background: `${color}14`, border: `1px solid ${color}28`,
-      fontSize: 10.5, fontFamily: T.mono, color,
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      padding: '4px 10px', borderRadius: 6,
+      background: T.bgHover, border: `1px solid ${T.border}`,
+      fontSize: 11, fontFamily: T.sans, fontWeight: 500, color: T.text,
     }}>
-      <i className={`ti ${icon}`} style={{ fontSize: 10 }} />
+      <i className={`ti ${icon}`} style={{ fontSize: 12, color: T.textDim }} />
       {label}
     </span>
   );

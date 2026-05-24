@@ -12,41 +12,42 @@ import SidebarShell from '../components/Sidebar';
 import ArchitectureDiagram from '../components/ArchitectureDiagram';
 
 export default function RepoGami() {
-  const [url, setUrl] = useState('');
-  const [analyzedUrl, setAnalyzedUrl] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [loadStage, setLoadStage] = useState('');
-  const [loadPct, setLoadPct] = useState(0);
-  const [error, setError] = useState('');
-  const [data, setData] = useState<AnalyzeResult | null>(null);
+  const [url, setUrl]                     = useState('');
+  const [analyzedUrl, setAnalyzedUrl]     = useState('');
+  const [loading, setLoading]             = useState(false);
+  const [loadStage, setLoadStage]         = useState('');
+  const [loadPct, setLoadPct]             = useState(0);
+  const [error, setError]                 = useState('');
+  const [data, setData]                   = useState<AnalyzeResult | null>(null);
 
-  const [selectedNode, setSelectedNode] = useState<GNode | null>(null);
+  const [selectedNode, setSelectedNode]   = useState<GNode | null>(null);
   const [highlightNodes, setHighlightNodes] = useState<Set<string>>(new Set());
   const [highlightLinks, setHighlightLinks] = useState<Set<string>>(new Set());
   const graphRef = useRef<any>(null);
 
-  const [blastMode, setBlastMode] = useState(false);
-  const [blastLoading, setBlastLoading] = useState(false);
+  const [blastMode, setBlastMode]         = useState(false);
+  const [blastLoading, setBlastLoading]   = useState(false);
 
-  const [sidebarTab, setSidebarTab] = useState<'node' | 'ai' | 'summary' | 'arch'>('summary');
-  const [showTree, setShowTree] = useState(true);
+  const [sidebarTab, setSidebarTab]       = useState<'node' | 'ai' | 'summary' | 'arch'>('summary');
+  const [showTree, setShowTree]           = useState(true);
 
-  const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
+  const [mobileTreeOpen, setMobileTreeOpen]     = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  const [aiQuestion, setAiQuestion] = useState('');
-  const [aiAnswer, setAiAnswer] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
+  const [aiQuestion, setAiQuestion]       = useState('');
+  const [aiAnswer, setAiAnswer]           = useState('');
+  const [aiLoading, setAiLoading]         = useState(false);
 
-  const [readme, setReadme] = useState('');
+  const [readme, setReadme]               = useState('');
   const [readmeLoading, setReadmeLoading] = useState(false);
 
-  const [arch, setArch] = useState<ArchResult | null>(null);
-  const [archLoading, setArchLoading] = useState(false);
+  const [arch, setArch]                   = useState<ArchResult | null>(null);
+  const [archLoading, setArchLoading]     = useState(false);
   const [archCanvasOpen, setArchCanvasOpen] = useState(false);
 
   const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+  // ── Analyze ─────────────────────────────────────────────────────────────────
   const analyze = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!url.trim()) return;
@@ -55,6 +56,10 @@ export default function RepoGami() {
     setHighlightNodes(new Set()); setHighlightLinks(new Set());
     setBlastMode(false); setAiAnswer(''); setArch(null); setReadme('');
     setLoadPct(0);
+    
+    // Auto-close mobile sidebars on new search
+    setMobileTreeOpen(false);
+    setMobileSidebarOpen(false);
 
     const stages = [
       { label: 'Fetching file tree from GitHub…', pct: 15 },
@@ -63,12 +68,10 @@ export default function RepoGami() {
       { label: 'Building system blueprint…',       pct: 85 },
     ];
     let si = 0;
-    setLoadStage(stages[0].label);
-    setLoadPct(stages[0].pct);
+    setLoadStage(stages[0].label); setLoadPct(stages[0].pct);
     const t = setInterval(() => {
       si = Math.min(si + 1, stages.length - 1);
-      setLoadStage(stages[si].label);
-      setLoadPct(stages[si].pct);
+      setLoadStage(stages[si].label); setLoadPct(stages[si].pct);
     }, 1500);
 
     try {
@@ -84,20 +87,18 @@ export default function RepoGami() {
       setSidebarTab('summary');
     } catch {
       clearInterval(t);
-      setError('Could not analyze repository. Verify the backend is running or check the URL.');
+      setError('Could not analyze repository. Check the URL or verify the backend is running.');
     } finally {
       setLoading(false); setLoadStage(''); setLoadPct(0);
     }
   }, [url, API]);
 
+  // ── Node click ──────────────────────────────────────────────────────────────
   const handleNodeClick = useCallback((node: GNode) => {
     setSelectedNode(node); setAiAnswer(''); setAiQuestion('');
     setBlastMode(false); setSidebarTab('node');
 
-    if (window.innerWidth <= 992) {
-      setMobileSidebarOpen(true);
-      setMobileTreeOpen(false);
-    }
+    if (window.innerWidth <= 992) { setMobileSidebarOpen(true); setMobileTreeOpen(false); }
     if (!data) return;
 
     const hn = new Set<string>([node.id]);
@@ -117,6 +118,7 @@ export default function RepoGami() {
     }
   }, [data]);
 
+  // ── Ask AI ──────────────────────────────────────────────────────────────────
   const handleAsk = useCallback(async (qOverride?: string) => {
     const question = qOverride || aiQuestion;
     if (!selectedNode || !question.trim() || !data) return;
@@ -145,12 +147,14 @@ export default function RepoGami() {
     finally { setAiLoading(false); }
   }, [selectedNode, aiQuestion, data, analyzedUrl, API]);
 
+  // ── Blast radius ─────────────────────────────────────────────────────────────
   const runBlast = useCallback(() => {
     if (!selectedNode || !data) return;
     setBlastLoading(true);
     setTimeout(() => { setBlastMode(true); setBlastLoading(false); }, 500);
   }, [selectedNode, data]);
 
+  // ── README ───────────────────────────────────────────────────────────────────
   const generateReadme = useCallback(async () => {
     if (!data) return;
     setReadmeLoading(true); setReadme('');
@@ -172,6 +176,7 @@ export default function RepoGami() {
     finally { setReadmeLoading(false); }
   }, [data, analyzedUrl, API]);
 
+  // ── Architecture ─────────────────────────────────────────────────────────────
   const generateArchitecture = useCallback(async () => {
     if (!data) return;
     setArchLoading(true); setArch(null);
@@ -186,8 +191,7 @@ export default function RepoGami() {
         }),
       });
       const result = await res.json();
-      setArch(result);
-      setArchCanvasOpen(true);
+      setArch(result); setArchCanvasOpen(true);
     } catch { setArch(null); }
     finally { setArchLoading(false); }
   }, [data, analyzedUrl, API]);
@@ -198,168 +202,110 @@ export default function RepoGami() {
       display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100vh',
     }}>
 
-      {/* ── HEADER ─────────────────────────────────────────────────────── */}
-      <header className="rg-header">
-
-        {/* Mobile tree toggle */}
-        {data && (
-          <button
-            className="rg-mobile-toggle"
-            onClick={() => setMobileTreeOpen(true)}
-            aria-label="Open file tree"
-          >
-            <i className="ti ti-layout-sidebar" style={{ fontSize: 16 }} />
-          </button>
-        )}
-
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <div style={{
-            width: 30, height: 30, borderRadius: 8,
-            background: T.text,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            position: 'relative',
-          }}>
-            <span style={{ color: T.bg, fontSize: 14, fontWeight: 700, fontFamily: T.mono, lineHeight: 1 }}>R</span>
-            <div className="rg-logo-dot" />
-          </div>
-          <div>
-            <div style={{
-              fontSize: 13, fontWeight: 600, letterSpacing: '-0.01em',
-              color: T.text, lineHeight: 1.1, fontFamily: T.mono,
-            }}>
-              REPOGAMI
-            </div>
-            <div className="rg-logo-sub" style={{
-              fontSize: 9, color: T.textDim, fontFamily: T.mono, letterSpacing: '0.06em',
-            }}>
-              CODEBASE INTEL
-            </div>
-          </div>
-        </div>
-
-        {/* Separator */}
-        <div className="rg-header-sep" />
-
-        {/* URL form — pill style */}
-        <div className="rg-header-center">
-          <form onSubmit={analyze} style={{ flex: 1, display: 'flex', maxWidth: 520 }}>
-            <div className="rg-url-form">
-              <i className="ti ti-brand-github" style={{ fontSize: 13, color: T.textDim, flexShrink: 0 }} />
-              <span style={{ fontSize: 11.5, fontFamily: T.mono, color: T.textDim, flexShrink: 0 }}>
-                github.com/
-              </span>
-              <input
-                className="rg-url-input"
-                value={url}
-                onChange={e => setUrl(e.target.value)}
-                placeholder="owner/repository"
-                spellCheck={false}
-                autoComplete="off"
-              />
-              <button
-                type="submit"
-                className="rg-submit-btn"
-                disabled={loading || !url.trim()}
-              >
-                {loading ? 'Parsing…' : 'Analyze →'}
-              </button>
-            </div>
-          </form>
-        </div>
-
-        {/* Right actions */}
-        <div className="rg-header-right">
+      {/* ── HEADER (MOBBIN PILL) ──────────────────────────────────────────────── */}
+      <div className="rg-header-wrapper">
+        <header className="rg-header">
+          
           {data && (
-            <>
-              {/* Stats pill */}
+            <button className="rg-mobile-toggle hide-tablet" onClick={() => setMobileTreeOpen(true)} aria-label="Open file tree">
+              <i className="ti ti-layout-sidebar" style={{ fontSize: 18 }} />
+            </button>
+          )}
+
+          {/* Logo Section */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, cursor: 'pointer' }} onClick={() => window.location.reload()}>
+            <div className="rg-logo-mark">R</div>
+            <div className="rg-logo-text" style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.02em', color: T.text }}>
+              Repogami
+            </div>
+          </div>
+
+          <div className="rg-header-sep hide-tablet" />
+
+          {/* Center Input Wrapper */}
+          <div className="rg-header-center">
+            <form onSubmit={analyze} style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+              <div className="rg-url-form">
+                <i className="ti ti-brand-github hide-mobile" style={{ fontSize: 18, color: T.textDim }} />
+                <input
+                  className="rg-url-input"
+                  value={url}
+                  onChange={e => setUrl(e.target.value)}
+                  placeholder="owner/repo"
+                  spellCheck={false}
+                  autoComplete="off"
+                  autoCorrect="off"
+                />
+              </div>
+            </form>
+          </div>
+
+          {/* Action Button */}
+          <button type="button" onClick={analyze} className="rg-submit-btn" disabled={loading || !url.trim()}>
+            {loading ? (
+               <><i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} /> <span className="btn-text-full">Analyzing...</span></>
+            ) : (
+               <><span className="btn-text-full">Analyze</span><span className="btn-text-short" style={{ display: 'none' }}>Go</span></>
+            )}
+          </button>
+
+          {/* Right actions (Stats & Graph view toggles) */}
+          {data && (
+            <div className="rg-header-right hide-tablet">
+              <div className="rg-header-sep" />
+              
               <div className="rg-stats-pill">
-                <span>
-                  <span style={{ color: T.textMuted }}>{data.stats.total_files}</span> files
-                </span>
+                <span style={{ color: T.text }}>{data.stats.total_files}</span> files
                 <span className="rg-stats-pill-sep" />
-                <span>
-                  <span style={{ color: T.amber }}>{data.stats.orphan_count}</span> orphans
-                </span>
+                <span style={{ color: T.text }}>{data.stats.total_edges}</span> edges
               </div>
 
-              {/* Visual separator */}
-              <div style={{ width: 1, height: 20, background: T.border, flexShrink: 0 }} />
-
-              {/* Tree toggle */}
               <button
                 onClick={() => setShowTree(v => !v)}
-                className="rg-btn"
-                style={{ gap: 5 }}
+                className="rg-mobile-toggle"
                 title={showTree ? 'Hide file tree' : 'Show file tree'}
+                style={{ border: 'none', background: 'transparent' }}
               >
-                <i
-                  className={`ti ${showTree
-                    ? 'ti-layout-sidebar-left-collapse'
-                    : 'ti-layout-sidebar-left-expand'}`}
-                  style={{ fontSize: 13 }}
-                />
-                Tree
+                <i className={`ti ${showTree ? 'ti-layout-sidebar-left-collapse' : 'ti-layout-sidebar-left-expand'}`} style={{ fontSize: 18 }} />
               </button>
-
-              {/* Open on GitHub */}
-              <button
-                className="rg-icon-btn"
-                title="Open on GitHub"
-                onClick={() =>
-                  window.open(
-                    `https://github.com/${analyzedUrl.replace('https://github.com/', '')}`,
-                    '_blank'
-                  )
-                }
-              >
-                <i className="ti ti-external-link" style={{ fontSize: 13 }} />
-              </button>
-            </>
+            </div>
           )}
-        </div>
 
-        {/* Mobile sidebar toggle */}
-        {data && (
-          <button
-            className="rg-mobile-toggle"
-            onClick={() => setMobileSidebarOpen(true)}
-            aria-label="Open sidebar"
-          >
-            <i className="ti ti-layout-sidebar-right" style={{ fontSize: 16 }} />
-          </button>
-        )}
-      </header>
+          {data && (
+            <button className="rg-mobile-toggle hide-tablet" style={{ display: 'block' }} onClick={() => setMobileSidebarOpen(true)}>
+               <i className="ti ti-layout-sidebar-right" style={{ fontSize: 18 }} />
+            </button>
+          )}
 
-      {/* ── ERROR BANNER ───────────────────────────────────────────────── */}
+        </header>
+      </div>
+
+      {/* ── ERROR TOAST ──────────────────────────────────────────────────── */}
       {error && (
         <div style={{
-          position: 'absolute', top: 64, left: '50%', transform: 'translateX(-50%)',
-          background: `${T.red}14`, border: `1px solid ${T.red}40`,
-          color: T.red, padding: '10px 18px', borderRadius: 8,
-          fontSize: 12.5, fontFamily: T.sans, fontWeight: 500,
-          zIndex: 200, display: 'flex', alignItems: 'center', gap: 10,
-          boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+          position: 'absolute', top: 90, left: '50%', transform: 'translateX(-50%)',
+          background: T.bgSurface, border: `1px solid ${T.border}`,
+          color: T.red, padding: '12px 20px', borderRadius: 12,
+          fontSize: 13, fontFamily: T.sans, fontWeight: 500,
+          zIndex: 200, display: 'flex', alignItems: 'center', gap: 12,
+          boxShadow: `0 8px 32px rgba(0,0,0,0.1)`,
           animation: 'fade-up 0.2s ease',
+          maxWidth: '90vw', width: 420,
         }}>
-          <i className="ti ti-alert-triangle" style={{ fontSize: 14 }} />
-          <span>{error}</span>
+          <i className="ti ti-alert-triangle" style={{ fontSize: 16, flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>{error}</span>
           <button
             onClick={() => setError('')}
-            style={{
-              background: 'none', border: 'none', color: T.red,
-              marginLeft: 6, cursor: 'pointer', opacity: 0.65, padding: 0,
-            }}
+            style={{ background: 'none', border: 'none', color: T.textDim, cursor: 'pointer', padding: 4, flexShrink: 0 }}
           >
-            <i className="ti ti-x" style={{ fontSize: 14 }} />
+            <i className="ti ti-x" style={{ fontSize: 16 }} />
           </button>
         </div>
       )}
 
-      {/* ── MAIN WORKSPACE ─────────────────────────────────────────────── */}
+      {/* ── WORKSPACE ────────────────────────────────────────────────────── */}
       <div className="rg-workspace">
 
-        {/* Backdrop */}
         <div
           className={`rg-backdrop${mobileTreeOpen || mobileSidebarOpen ? ' active' : ''}`}
           onClick={() => { setMobileTreeOpen(false); setMobileSidebarOpen(false); }}
@@ -368,11 +314,7 @@ export default function RepoGami() {
         {/* File tree */}
         {data && showTree && (
           <div className={`rg-file-tree${mobileTreeOpen ? ' open' : ''}`}>
-            <FileTree
-              nodes={data.graph.nodes}
-              selectedId={selectedNode?.id}
-              onSelect={handleNodeClick}
-            />
+            <FileTree nodes={data.graph.nodes} selectedId={selectedNode?.id} onSelect={handleNodeClick} />
           </div>
         )}
 
@@ -391,24 +333,28 @@ export default function RepoGami() {
                 graphRef={graphRef}
               />
 
-              {/* Graph overlay — stats strip */}
-              <div style={{
-                position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
-                display: 'flex', alignItems: 'center', gap: 16,
-                background: `${T.bgElevated}E0`, backdropFilter: 'blur(8px)',
-                border: `1px solid ${T.border}`, borderRadius: 8,
-                padding: '6px 16px', fontSize: 10.5, fontFamily: T.mono, color: T.textDim,
-                pointerEvents: 'none',
-              }}>
-                <span><span style={{ color: T.textMuted }}>{data.stats.total_files}</span> nodes</span>
-                <span style={{ width: 1, height: 12, background: T.border }} />
-                <span><span style={{ color: T.textMuted }}>{data.stats.total_edges}</span> edges</span>
-                <span style={{ width: 1, height: 12, background: T.border }} />
-                <span><span style={{ color: T.amber }}>{data.stats.orphan_count}</span> orphans</span>
+              {/* Bottom info strip */}
+              <div className="rg-graph-strip">
+                <span>
+                  <span style={{ fontWeight: 600, color: T.text }}>{data.stats.total_files}</span> nodes
+                </span>
+                <span className="rg-graph-strip-sep" />
+                <span>
+                  <span style={{ fontWeight: 600, color: T.text }}>{data.stats.total_edges}</span> edges
+                </span>
+                <span className="rg-graph-strip-sep" />
+                <span>
+                  <span style={{ fontWeight: 600, color: T.amber }}>{data.stats.orphan_count}</span> orphans
+                </span>
                 {selectedNode && (
                   <>
-                    <span style={{ width: 1, height: 12, background: T.border }} />
-                    <span style={{ color: T.cyan }}>● {selectedNode.name}</span>
+                    <span className="rg-graph-strip-sep hide-mobile" />
+                    <span style={{ color: T.text, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <i className="ti ti-point-filled" style={{ fontSize: 8 }} />
+                      <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {selectedNode.name}
+                      </span>
+                    </span>
                   </>
                 )}
               </div>
@@ -419,24 +365,23 @@ export default function RepoGami() {
         {/* Sidebar */}
         <div className={`rg-sidebar-shell${mobileSidebarOpen ? ' open' : ''}`}>
           <SidebarShell
-            sidebarTab={sidebarTab} setSidebarTab={setSidebarTab}
-            data={data} selectedNode={selectedNode}
-            handleNodeClick={handleNodeClick} runBlast={runBlast} blastLoading={blastLoading}
-            aiQuestion={aiQuestion} setAiQuestion={setAiQuestion}
-            handleAsk={handleAsk} aiLoading={aiLoading} aiAnswer={aiAnswer}
+            sidebarTab={sidebarTab}       setSidebarTab={setSidebarTab}
+            data={data}                   selectedNode={selectedNode}
+            handleNodeClick={handleNodeClick}
+            runBlast={runBlast}           blastLoading={blastLoading}
+            aiQuestion={aiQuestion}       setAiQuestion={setAiQuestion}
+            handleAsk={handleAsk}         aiLoading={aiLoading}
+            aiAnswer={aiAnswer}
             generateReadme={generateReadme} readmeLoading={readmeLoading} readme={readme}
-            arch={arch} generateArchitecture={generateArchitecture} archLoading={archLoading}
+            arch={arch}                   generateArchitecture={generateArchitecture}
+            archLoading={archLoading}
           />
         </div>
       </div>
 
-      {/* ── ARCH CANVAS OVERLAY ─────────────────────────────────────────── */}
+      {/* ── ARCH OVERLAY ─────────────────────────────────────────────────── */}
       {archCanvasOpen && arch && (
-        <ArchitectureDiagram
-          arch={arch}
-          repoUrl={analyzedUrl}
-          onClose={() => setArchCanvasOpen(false)}
-        />
+        <ArchitectureDiagram arch={arch} repoUrl={analyzedUrl} onClose={() => setArchCanvasOpen(false)} />
       )}
     </div>
   );

@@ -52,6 +52,7 @@ export interface ArchGraphNode {
   label: string;
   type: string;
   group: string | null;
+  node: string;
 }
 
 export interface ArchGraphEdge {
