@@ -57,7 +57,6 @@ export default function RepoGami() {
     setBlastMode(false); setAiAnswer(''); setArch(null); setReadme('');
     setLoadPct(0);
     
-    // Auto-close mobile sidebars on new search
     setMobileTreeOpen(false);
     setMobileSidebarOpen(false);
 
@@ -214,7 +213,7 @@ export default function RepoGami() {
 
           {/* Logo Section */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, cursor: 'pointer' }} onClick={() => window.location.reload()}>
-            <div className="rg-logo-mark">R</div>
+            <div className="rg-logo-mark" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>R</div>
             <div className="rg-logo-text" style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.02em', color: T.text }}>
               Repogami
             </div>
@@ -251,7 +250,7 @@ export default function RepoGami() {
 
           {/* Right actions (Stats & Graph view toggles) */}
           {data && (
-            <div className="rg-header-right hide-tablet">
+            <div className="rg-header-right hide-tablet" style={{ animation: 'fade-up 0.4s ease' }}>
               <div className="rg-header-sep" />
               
               <div className="rg-stats-pill">
@@ -272,7 +271,7 @@ export default function RepoGami() {
           )}
 
           {data && (
-            <button className="rg-mobile-toggle hide-tablet" style={{ display: 'block' }} onClick={() => setMobileSidebarOpen(true)}>
+            <button className="rg-mobile-toggle hide-tablet" style={{ display: 'block', animation: 'fade-up 0.4s ease' }} onClick={() => setMobileSidebarOpen(true)}>
                <i className="ti ti-layout-sidebar-right" style={{ fontSize: 18 }} />
             </button>
           )}
@@ -362,27 +361,34 @@ export default function RepoGami() {
           )}
         </div>
 
-        {/* Sidebar */}
-        <div className={`rg-sidebar-shell${mobileSidebarOpen ? ' open' : ''}`}>
-          <SidebarShell
-            sidebarTab={sidebarTab}       setSidebarTab={setSidebarTab}
-            data={data}                   selectedNode={selectedNode}
-            handleNodeClick={handleNodeClick}
-            runBlast={runBlast}           blastLoading={blastLoading}
-            aiQuestion={aiQuestion}       setAiQuestion={setAiQuestion}
-            handleAsk={handleAsk}         aiLoading={aiLoading}
-            aiAnswer={aiAnswer}
-            generateReadme={generateReadme} readmeLoading={readmeLoading} readme={readme}
-            arch={arch}                   generateArchitecture={generateArchitecture}
-            archLoading={archLoading}
-          />
-        </div>
+        {/* Sidebar - ONLY RENDERS IF DATA EXISTS */}
+        {data && (
+          <div className={`rg-sidebar-shell${mobileSidebarOpen ? ' open' : ''}`}>
+            <SidebarShell
+              sidebarTab={sidebarTab}       setSidebarTab={setSidebarTab}
+              data={data}                   selectedNode={selectedNode}
+              handleNodeClick={handleNodeClick}
+              runBlast={runBlast}           blastLoading={blastLoading}
+              aiQuestion={aiQuestion}       setAiQuestion={setAiQuestion}
+              handleAsk={handleAsk}         aiLoading={aiLoading}
+              aiAnswer={aiAnswer}
+              generateReadme={generateReadme} readmeLoading={readmeLoading} readme={readme}
+              arch={arch}                   generateArchitecture={generateArchitecture}
+              archLoading={archLoading}
+            />
+          </div>
+        )}
       </div>
 
       {/* ── ARCH OVERLAY ─────────────────────────────────────────────────── */}
       {archCanvasOpen && arch && (
-        <ArchitectureDiagram arch={arch} repoUrl={analyzedUrl} onClose={() => setArchCanvasOpen(false)} />
-      )}
+  <ArchitectureDiagram
+    arch={arch}
+    repoUrl={analyzedUrl}
+    onClose={() => setArchCanvasOpen(false)}
+    analysisNodes={data?.graph?.nodes ?? []}
+  />
+)}
     </div>
   );
 }

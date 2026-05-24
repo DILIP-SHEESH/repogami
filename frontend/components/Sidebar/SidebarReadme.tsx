@@ -68,60 +68,60 @@ export default function SidebarReadme({ readme, readmeLoading, onGenerate }: Pro
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <style>{`
-        .rg-md-h1 { font-size: 20px; font-weight: 700; color: ${T.text}; margin: 24px 0 12px; letter-spacing: -0.02em; font-family: ${T.sans}; }
-        .rg-md-h2 { font-size: 16px; font-weight: 600; color: ${T.text}; margin: 20px 0 8px; letter-spacing: -0.01em; font-family: ${T.sans}; border-bottom: 1px solid ${T.border}; padding-bottom: 8px; }
-        .rg-md-h3 { font-size: 14px; font-weight: 600; color: ${T.textMuted}; margin: 16px 0 6px; font-family: ${T.sans}; }
+        .rg-md-h1 { font-size: 20px; font-weight: 800; color: ${T.text}; margin: 24px 0 12px; letter-spacing: -0.02em; font-family: ${T.sans}; }
+        .rg-md-h2 { font-size: 16px; font-weight: 700; color: ${T.text}; margin: 24px 0 8px; letter-spacing: -0.01em; font-family: ${T.sans}; border-bottom: 1px solid ${T.border}; padding-bottom: 8px; }
+        .rg-md-h3 { font-size: 14px; font-weight: 700; color: ${T.textMuted}; margin: 16px 0 6px; font-family: ${T.sans}; }
         .rg-md-h4 { font-size: 13px; font-weight: 600; color: ${T.textMuted}; margin: 12px 0 4px; font-family: ${T.sans}; }
-        .rg-md-p  { font-size: 13.5px; color: ${T.textMuted}; line-height: 1.7; margin: 0 0 12px; font-family: ${T.sans}; }
+        .rg-md-p  { font-size: 13.5px; color: ${T.textMuted}; line-height: 1.7; margin: 0 0 16px; font-family: ${T.sans}; }
         .rg-md-li { font-size: 13.5px; color: ${T.textMuted}; line-height: 1.65; margin-bottom: 6px; font-family: ${T.sans}; }
-        .rg-md-ul { padding-left: 20px; margin: 8px 0 12px; list-style: disc; }
-        .rg-md-link { color: ${T.text}; text-decoration: underline; font-weight: 500; }
+        .rg-md-ul { padding-left: 20px; margin: 8px 0 16px; list-style: disc; }
+        .rg-md-link { color: ${T.text}; text-decoration: underline; font-weight: 600; transition: color 0.15s; }
         .rg-md-link:hover { color: ${T.textMuted}; }
-        .rg-md-hr { border: none; border-top: 1px solid ${T.border}; margin: 20px 0; }
-        .rg-md-bq { border-left: 3px solid ${T.borderHi}; margin: 12px 0; padding: 4px 16px; color: ${T.textMuted}; font-style: italic; font-size: 13px; background: ${T.bgHover}; border-radius: 0 8px 8px 0; }
+        .rg-md-hr { border: none; border-top: 1px solid ${T.border}; margin: 24px 0; }
+        .rg-md-bq { border-left: 3px solid #111; margin: 16px 0; padding: 8px 16px; color: ${T.textMuted}; font-style: italic; font-size: 13px; background: ${T.bgHover}; border-radius: 0 8px 8px 0; }
         .rg-code-block {
-          background: ${T.bgHover}; border: 1px solid ${T.border}; border-radius: 12px;
-          padding: 16px; margin: 12px 0; overflow-x: auto;
+          background: ${T.bgSurface}; border: 1px solid ${T.border}; border-radius: 12px;
+          padding: 16px; margin: 16px 0; overflow-x: auto;
           font-family: ${T.mono}; font-size: 12.5px; color: ${T.text}; line-height: 1.6;
-          position: relative;
+          position: relative; box-shadow: 0 2px 8px rgba(0,0,0,0.02);
         }
         .rg-code-block::before {
           content: attr(data-lang);
           position: absolute; top: 8px; right: 12px;
-          font-size: 10px; color: ${T.textDim}; font-family: ${T.sans}; font-weight: 600;
+          font-size: 10px; color: ${T.textDim}; font-family: ${T.sans}; font-weight: 700;
           text-transform: uppercase; letter-spacing: 0.05em;
         }
         .rg-inline-code {
           background: ${T.bgHover}; border: 1px solid ${T.border};
           border-radius: 6px; padding: 2px 6px;
-          font-family: ${T.mono}; font-size: 12px; color: ${T.text}; font-weight: 500;
+          font-family: ${T.mono}; font-size: 12px; color: ${T.text}; font-weight: 600;
         }
-        .rg-md-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
-        .rg-md-td { padding: 8px 12px; border: 1px solid ${T.border}; color: ${T.textMuted}; font-family: ${T.sans}; }
-        .rg-md-td:first-child { color: ${T.text}; font-weight: 600; background: ${T.bgHover}; }
+        .rg-md-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; border-radius: 8px; overflow: hidden; border: 1px solid ${T.border}; }
+        .rg-md-td { padding: 10px 14px; border-bottom: 1px solid ${T.border}; color: ${T.textMuted}; font-family: ${T.sans}; }
+        .rg-md-td:first-child { color: ${T.text}; font-weight: 600; background: ${T.bgHover}; border-right: 1px solid ${T.border}; }
       `}</style>
 
       {/* Toolbar */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '12px 16px', borderBottom: `1px solid ${T.border}`,
-        flexShrink: 0, background: T.bgElevated,
+        flexShrink: 0, background: T.bgElevated, zIndex: 5
       }}>
         {/* View toggle */}
         <div style={{
           display: 'flex', background: T.bgSurface,
           border: `1px solid ${T.border}`, borderRadius: 8, padding: 4, gap: 4,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
         }}>
           {(['preview', 'raw'] as const).map(v => (
             <button
-              key={v}
-              onClick={() => setView(v)}
+              key={v} onClick={() => setView(v)}
               style={{
                 height: 28, padding: '0 12px', borderRadius: 6, border: 'none',
                 background: view === v ? T.bgHover : 'transparent',
                 color: view === v ? T.text : T.textDim,
                 fontFamily: T.sans, fontSize: 12, fontWeight: 600,
-                cursor: 'pointer', transition: 'all 0.15s', textTransform: 'capitalize'
+                cursor: 'pointer', transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)', textTransform: 'capitalize'
               }}
             >
               {v}
@@ -131,34 +131,35 @@ export default function SidebarReadme({ readme, readmeLoading, onGenerate }: Pro
 
         <div style={{ flex: 1 }} />
 
-        {/* Copy */}
+        {/* Copy / DL */}
         {readme && (
           <>
             <button
               onClick={handleCopy}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
-                height: 32, padding: '0 12px', borderRadius: 8,
-                border: `1px solid ${T.border}`,
-                background: copied ? T.text : T.bgSurface,
-                color: copied ? '#fff' : T.text,
+                height: 32, padding: '0 12px', borderRadius: 8, border: `1px solid ${T.border}`,
+                background: copied ? T.text : T.bgSurface, color: copied ? '#fff' : T.text,
                 fontFamily: T.sans, fontSize: 12, fontWeight: 600,
-                cursor: 'pointer', transition: 'all 0.15s',
+                cursor: 'pointer', transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
               }}
+              onMouseEnter={e => { if(!copied) e.currentTarget.style.background = T.bgHover; }}
+              onMouseLeave={e => { if(!copied) e.currentTarget.style.background = T.bgSurface; }}
             >
               <i className={`ti ${copied ? 'ti-check' : 'ti-copy'}`} style={{ fontSize: 14 }} />
-              {copied ? 'Copied!' : 'Copy'}
+              {copied ? 'Copied' : 'Copy'}
             </button>
 
             <button
               onClick={handleDownload}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
-                height: 32, padding: '0 12px', borderRadius: 8,
-                border: `1px solid ${T.border}`,
+                height: 32, padding: '0 12px', borderRadius: 8, border: `1px solid ${T.border}`,
                 background: T.bgSurface, color: T.text,
                 fontFamily: T.sans, fontSize: 12, fontWeight: 600,
-                cursor: 'pointer', transition: 'background 0.15s',
+                cursor: 'pointer', transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
               }}
               onMouseEnter={e => e.currentTarget.style.background = T.bgHover}
               onMouseLeave={e => e.currentTarget.style.background = T.bgSurface}
@@ -172,37 +173,34 @@ export default function SidebarReadme({ readme, readmeLoading, onGenerate }: Pro
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-
         {!readme && !readmeLoading && (
           <div style={{ textAlign: 'center', paddingTop: 64 }}>
             <div style={{
-              width: 56, height: 56, borderRadius: 16,
-              background: T.bgSurface, border: `1px solid ${T.border}`,
+              width: 56, height: 56, borderRadius: 16, background: T.bgSurface, border: `1px solid ${T.border}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              margin: '0 auto 16px', boxShadow: '0 4px 16px rgba(0,0,0,0.03)'
+              margin: '0 auto 20px', boxShadow: '0 4px 16px rgba(0,0,0,0.03)'
             }}>
               <i className="ti ti-file-description" style={{ fontSize: 28, color: T.text }} />
             </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: T.text, marginBottom: 8, letterSpacing: '-0.01em' }}>
-              No README generated yet
+            <div style={{ fontSize: 18, fontWeight: 800, color: T.text, marginBottom: 12, letterSpacing: '-0.02em' }}>
+              No README generated
             </div>
             <div style={{ fontSize: 14, color: T.textMuted, marginBottom: 32, lineHeight: 1.6 }}>
-              Generate a developer-grade README with badges, architecture diagram, and full setup guide.
+              Generate a developer-grade README with badges, architecture summary, and setup instructions.
             </div>
             <button
               onClick={onGenerate}
               style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8,
-                height: 44, padding: '0 24px', borderRadius: 100, border: 'none',
-                background: '#111', color: '#fff',
-                fontFamily: T.sans, fontSize: 14, fontWeight: 600,
-                cursor: 'pointer', transition: 'opacity 0.15s',
+                display: 'inline-flex', alignItems: 'center', gap: 8, height: 48, padding: '0 24px',
+                borderRadius: 100, border: 'none', background: '#111', color: '#fff',
+                fontFamily: T.sans, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
               }}
-              onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
-              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.15)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'; }}
             >
               <i className="ti ti-sparkles" style={{ fontSize: 16 }} />
-              Generate README
+              Generate README.md
             </button>
           </div>
         )}
@@ -210,18 +208,13 @@ export default function SidebarReadme({ readme, readmeLoading, onGenerate }: Pro
         {readmeLoading && (
           <div style={{ textAlign: 'center', paddingTop: 64 }}>
             <div style={{
-              width: 48, height: 48, borderRadius: 12,
-              background: T.bgSurface, border: `1px solid ${T.border}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              margin: '0 auto 16px',
+              width: 56, height: 56, borderRadius: 16, background: T.bgSurface, border: `1px solid ${T.border}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', boxShadow: '0 4px 16px rgba(0,0,0,0.03)'
             }}>
-              <i className="ti ti-loader-2" style={{
-                fontSize: 24, color: T.text,
-                animation: 'spin 0.6s linear infinite',
-              }} />
+              <i className="ti ti-loader-2" style={{ fontSize: 28, color: T.text, animation: 'spin 0.6s linear infinite' }} />
             </div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: T.text }}>
-              Generating README…
+            <div style={{ fontSize: 16, fontWeight: 700, color: T.text }}>
+              Writing documentation…
             </div>
             <div style={{ fontSize: 13, color: T.textDim, marginTop: 8, fontFamily: T.sans, fontWeight: 500 }}>
               analysing modules · writing sections · adding badges
@@ -231,45 +224,33 @@ export default function SidebarReadme({ readme, readmeLoading, onGenerate }: Pro
 
         {readme && !readmeLoading && (
           view === 'raw' ? (
-            /* Raw Markdown */
             <pre style={{
-              fontFamily: T.mono, fontSize: 13, color: T.textMuted,
-              lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              margin: 0, padding: '16px', background: T.bgHover, borderRadius: 12, border: `1px solid ${T.border}`
+              fontFamily: T.mono, fontSize: 13, color: T.textMuted, lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              margin: 0, padding: '20px', background: T.bgSurface, borderRadius: 16, border: `1px solid ${T.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
             }}>
               {readme}
             </pre>
           ) : (
-            /* Rendered preview */
-            <div
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(readme) }}
-              style={{ minHeight: 100 }}
-            />
+            <div dangerouslySetInnerHTML={{ __html: renderMarkdown(readme) }} style={{ minHeight: 100 }} />
           )
         )}
       </div>
 
       {/* Regenerate footer */}
       {readme && !readmeLoading && (
-        <div style={{
-          padding: '12px 20px', borderTop: `1px solid ${T.border}`,
-          display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, background: T.bgElevated
-        }}>
-          <span style={{ fontSize: 12, color: T.textDim, fontFamily: T.sans, fontWeight: 500, flex: 1 }}>
+        <div style={{ padding: '16px 20px', borderTop: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, background: T.bgElevated }}>
+          <span style={{ fontSize: 12, color: T.textDim, fontFamily: T.sans, fontWeight: 600, flex: 1 }}>
             README.md · {readme.split('\n').length} lines
           </span>
           <button
             onClick={onGenerate}
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              height: 32, padding: '0 12px', borderRadius: 8,
-              border: `1px solid ${T.border}`,
-              background: T.bgSurface, color: T.text,
-              fontFamily: T.sans, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              transition: 'background 0.15s',
+              display: 'inline-flex', alignItems: 'center', gap: 8, height: 36, padding: '0 16px', borderRadius: 100, border: `1px solid ${T.border}`,
+              background: T.bgSurface, color: T.text, fontFamily: T.sans, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
             }}
-            onMouseEnter={e => e.currentTarget.style.background = T.bgHover}
-            onMouseLeave={e => e.currentTarget.style.background = T.bgSurface}
+            onMouseEnter={e => { e.currentTarget.style.background = T.bgHover; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = T.bgSurface; e.currentTarget.style.transform = 'translateY(0)'; }}
           >
             <i className="ti ti-refresh" style={{ fontSize: 14 }} />
             Regenerate

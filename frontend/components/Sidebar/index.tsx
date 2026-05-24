@@ -39,26 +39,34 @@ const TABS = [
 export default function SidebarShell({ sidebarTab, setSidebarTab, ...panelProps }: SidebarProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', background: T.bgElevated }}>
-
-      {/* Tab bar */}
-      <div className="rg-tabs">
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            className={`rg-tab${sidebarTab === tab.id ? ' active' : ''}`}
-            onClick={() => setSidebarTab(tab.id)}
-            style={{
-              flex: 1, height: 48, background: 'none', border: 'none', 
-              borderBottom: `2px solid ${sidebarTab === tab.id ? T.text : 'transparent'}`,
-              color: sidebarTab === tab.id ? T.text : T.textDim, cursor: 'pointer', 
-              fontFamily: T.sans, fontSize: 12, fontWeight: 600, transition: 'all 0.15s',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
-            }}
-          >
-            <i className={`ti ${tab.icon}`} style={{ fontSize: 14 }} />
-            <span className="hide-mobile">{tab.label}</span>
-          </button>
-        ))}
+      {/* Premium Tab Bar */}
+      <div style={{ 
+        display: 'flex', padding: '8px', gap: '4px', borderBottom: `1px solid ${T.border}`, 
+        background: T.bgSurface, zIndex: 10 
+      }}>
+        {TABS.map(tab => {
+          const isActive = sidebarTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setSidebarTab(tab.id)}
+              style={{
+                flex: 1, height: 36, border: 'none', borderRadius: 8,
+                background: isActive ? T.bgActive : 'transparent',
+                color: isActive ? T.text : T.textDim,
+                cursor: 'pointer', fontFamily: T.sans, fontSize: 12, fontWeight: isActive ? 600 : 500,
+                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                boxShadow: isActive ? '0 2px 4px rgba(0,0,0,0.02)' : 'none'
+              }}
+              onMouseEnter={e => { if(!isActive) e.currentTarget.style.background = T.bgHover; }}
+              onMouseLeave={e => { if(!isActive) e.currentTarget.style.background = 'transparent'; }}
+            >
+              <i className={`ti ${tab.icon}`} style={{ fontSize: 14 }} />
+              <span className="hide-mobile">{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Panel content */}

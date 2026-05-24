@@ -265,3 +265,86 @@
      }
      .rg-graph-strip-sep { display: none; }
    }
+
+
+   /* ─── PREMIUM EMPTY STATE EFFECTS ──────────────────────────────────────────── */
+
+/* Hardware-accelerated blur reveals (Linear/Vercel style) */
+@keyframes fadeUpBlur {
+  0% { opacity: 0; transform: translateY(30px); filter: blur(8px); }
+  100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+.rg-animate-fade-up {
+  animation: fadeUpBlur 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+  will-change: transform, opacity, filter;
+}
+
+.rg-animate-fade-up.delay-1 { animation-delay: 0.1s; }
+.rg-animate-fade-up.delay-2 { animation-delay: 0.2s; }
+.rg-animate-fade-up.delay-3 { animation-delay: 0.35s; }
+
+/* Dynamic Status Dot */
+@keyframes pulseDot {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(17, 17, 17, 0.2); }
+  70% { transform: scale(1); box-shadow: 0 0 0 4px rgba(17, 17, 17, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(17, 17, 17, 0); }
+}
+.rg-status-dot {
+  animation: pulseDot 2s infinite;
+}
+
+/* Ambient Hero Glow */
+@keyframes ambientBreathe {
+  0% { transform: translateX(-50%) scale(0.9); opacity: 0.4; }
+  100% { transform: translateX(-50%) scale(1.1); opacity: 0.7; }
+}
+.rg-hero-glow {
+  position: absolute;
+  top: 5%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60vw;
+  height: 60vh;
+  background: radial-gradient(circle, rgba(0,0,0,0.03) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+  border-radius: 50%;
+  animation: ambientBreathe 8s ease-in-out infinite alternate;
+}
+
+/* Bento Card Tactile Hovers */
+.rg-glass-card {
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.01), 0 0 0 1px transparent;
+}
+.rg-glass-card:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 0 24px 48px -12px rgba(0,0,0,0.08), 0 0 0 1px var(--border-hi, #111);
+  z-index: 10;
+}
+
+/* Card Icon Interactions */
+.rg-icon-box {
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rg-glass-card:hover .rg-icon-box {
+  background: #111 !important;
+  color: #fff !important;
+  transform: scale(1.1) rotate(-6deg);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+  border-color: #111 !important;
+}
+
+/* Pill/Chip Interactions */
+.rg-chip-hover {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rg-chip-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+}
+.rg-chip-hover:active {
+  transform: translateY(0) scale(0.96);
+}
