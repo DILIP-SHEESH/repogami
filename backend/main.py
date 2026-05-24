@@ -1,12 +1,21 @@
 """
-RepoGami Backend — FastAPI
+RepoGami Backend — FastAPI v3
 Codebase intelligence engine: dependency parsing, semantic role detection,
-blast radius computation, dead code detection, AI-powered file chat.
+blast radius computation, dead code detection, AI-powered file chat,
+architecture diagram generation, README generation.
 
 Free stack:
   - GitHub Trees API (60 req/hr unauth, 5000 req/hr with token)
-  - Groq API: free tier, llama-3.3-70b-versatile, 14,400 req/day
+  - Groq API: free tier
+    llama-3.1-8b-instant  → fast/cheap, used for summaries
+    llama-3.3-70b-versatile → quality, used for architecture graph only
     Sign up: https://console.groq.com (no credit card)
+
+Rate limit strategy:
+  - Two-model split: 8b for high-volume calls, 70b only for arch graph
+  - Exponential backoff on 429s (1s, 2s, 4s)
+  - In-memory LRU cache keyed by owner/repo (avoids repeat Groq calls)
+  - Response headers expose remaining Groq quota for frontend awareness
 """
 
 import os
@@ -15,21 +24,21 @@ import json
 import posixpath
 import asyncio
 import httpx
+import time
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-from collections import defaultdict
-from fastapi import BackgroundTasks
+from collections import defaultdict, OrderedDict
 
 from dotenv import load_dotenv
 load_dotenv()
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_API_KEY  = os.getenv("GROQ_API_KEY", "")
 
-app = FastAPI(title="RepoGami", version="1.0.0")
+app = FastAPI(title="RepoGami", version="3.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,6 +46,46 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# In-memory LRU cache (max 100 entries, per owner/repo)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class LRUCache:
+    def __init__(self, maxsize: int = 100):
+        self._cache: OrderedDict = OrderedDict()
+        self._maxsize = maxsize
+        self._timestamps: dict[str, float] = {}
+        self._ttl = 3600  # 1 hour TTL
+
+    def get(self, key: str):
+        if key not in self._cache:
+            return None
+        if time.time() - self._timestamps.get(key, 0) > self._ttl:
+            self._cache.pop(key, None)
+            self._timestamps.pop(key, None)
+            return None
+        self._cache.move_to_end(key)
+        return self._cache[key]
+
+    def set(self, key: str, value):
+        if key in self._cache:
+            self._cache.move_to_end(key)
+        self._cache[key] = value
+        self._timestamps[key] = time.time()
+        if len(self._cache) > self._maxsize:
+            oldest = next(iter(self._cache))
+            self._cache.pop(oldest)
+            self._timestamps.pop(oldest, None)
+
+    def invalidate(self, key: str):
+        self._cache.pop(key, None)
+        self._timestamps.pop(key, None)
+
+
+_analyze_cache = LRUCache(maxsize=100)
+_arch_cache    = LRUCache(maxsize=100)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Constants
@@ -50,37 +99,52 @@ SKIP_DIRS = frozenset({
     ".husky", "storybook-static",
 })
 
-# Extensions we parse for dependency edges
 PARSEABLE_EXT = frozenset({
     ".py", ".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs",
     ".go", ".rs", ".rb", ".php", ".java", ".cs", ".swift", ".kt",
 })
 
-# Config/doc extensions — present in graph but not parsed for deps
 CONFIG_EXT = frozenset({
     ".json", ".yaml", ".yml", ".toml", ".lock", ".md", ".txt",
     ".env", ".ini", ".cfg", ".conf", ".xml", ".csv",
 })
 
 EXT_LANGUAGE = {
-    ".py": "python", ".js": "javascript", ".ts": "typescript",
+    ".py": "python",    ".js": "javascript", ".ts": "typescript",
     ".jsx": "javascript", ".tsx": "typescript", ".mjs": "javascript",
-    ".cjs": "javascript", ".go": "go", ".rs": "rust", ".rb": "ruby",
-    ".php": "php", ".java": "java", ".cs": "csharp", ".swift": "swift",
-    ".kt": "kotlin", ".md": "markdown", ".json": "json",
-    ".yaml": "yaml", ".yml": "yaml", ".toml": "toml",
-    ".css": "css", ".scss": "scss", ".html": "html", ".sh": "shell",
+    ".cjs": "javascript", ".go": "go",        ".rs": "rust",
+    ".rb": "ruby",      ".php": "php",         ".java": "java",
+    ".cs": "csharp",    ".swift": "swift",     ".kt": "kotlin",
+    ".md": "markdown",  ".json": "json",       ".yaml": "yaml",
+    ".yml": "yaml",     ".toml": "toml",       ".css": "css",
+    ".scss": "scss",    ".html": "html",       ".sh": "shell",
 }
 
 LANG_COLOR = {
     "python": "#3776AB", "javascript": "#F7DF1E", "typescript": "#3178C6",
-    "go": "#00ADD8", "rust": "#CE422B", "ruby": "#CC342D",
-    "php": "#777BB4", "java": "#007396", "csharp": "#239120",
-    "swift": "#FA7343", "kotlin": "#7F52FF", "markdown": "#083FA1",
-    "json": "#000000", "yaml": "#CB171E", "toml": "#9C4121",
-    "css": "#264DE4", "scss": "#CC6699", "html": "#E34F26",
-    "shell": "#89E051", "other": "#6B7280",
+    "go": "#00ADD8",     "rust": "#CE422B",       "ruby": "#CC342D",
+    "php": "#777BB4",    "java": "#007396",        "csharp": "#239120",
+    "swift": "#FA7343",  "kotlin": "#7F52FF",      "markdown": "#083FA1",
+    "json": "#000000",   "yaml": "#CB171E",         "toml": "#9C4121",
+    "css": "#264DE4",    "scss": "#CC6699",         "html": "#E34F26",
+    "shell": "#89E051",  "other": "#6B7280",
 }
+
+LAYER_HINTS = {
+    "frontend":  ["pages", "views", "components", "ui", "app", "screens", "layouts", "templates"],
+    "api":       ["api", "routes", "controllers", "handlers", "endpoints", "routers", "rest", "graphql"],
+    "services":  ["services", "service", "usecases", "use_cases", "business", "logic", "domain"],
+    "models":    ["models", "schemas", "entities", "types", "interfaces", "dto", "structs"],
+    "data":      ["db", "database", "repos", "repositories", "store", "storage", "dao", "migrations"],
+    "utils":     ["utils", "helpers", "lib", "common", "shared", "core", "pkg"],
+    "config":    ["config", "settings", "env", "constants"],
+    "infra":     ["infra", "infrastructure", "middleware", "auth", "cache", "queue", "workers"],
+    "tests":     ["tests", "test", "__tests__", "spec", "specs"],
+}
+
+# Groq model routing
+MODEL_FAST    = "llama-3.1-8b-instant"      # summaries, ask, README
+MODEL_QUALITY = "llama-3.3-70b-versatile"   # architecture graph (pass 2 only)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -97,9 +161,44 @@ class AskRequest(BaseModel):
     subgraph: Optional[list] = []
 
 class BlastRequest(BaseModel):
-    edges: list  # [{source, target}]
+    edges: list
     node_id: str
     depth: Optional[int] = 5
+
+class ReadmeRequest(BaseModel):
+    repo_url: str
+    project_name: str
+    tagline: str
+    description: str
+    tech_stack: list[str]
+    architecture: str
+    entry_points: list[str]
+    key_modules: list[str]
+    insights: list[str]
+    total_files: int
+    total_edges: int
+    languages: dict
+    file_tree_summary: str
+    top_hubs: Optional[list] = []
+    orphan_count: Optional[int] = 0
+    complexity: Optional[str] = "medium"
+
+class ArchitectureRequest(BaseModel):
+    repo_url: str
+    project_name: str
+    description: str
+    tech_stack: list[str]
+    architecture: str
+    key_modules: list[str]
+    file_tree_summary: str
+    languages: dict
+    entry_points: Optional[list[str]] = []
+    total_files: Optional[int] = 0
+    top_hubs: Optional[list] = []
+    orphan_count: Optional[int] = 0
+    role_counts: Optional[dict] = {}
+    total_edges: Optional[int] = 0
+    force_refresh: Optional[bool] = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -142,23 +241,16 @@ def get_language(path: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Dependency extraction — language-aware, posixpath throughout
+# Dependency extraction
 # ─────────────────────────────────────────────────────────────────────────────
 
 def extract_deps(content: str, path: str, all_paths: set[str]) -> list[dict]:
-    """
-    Extract import edges from a single file.
-    Only resolves to files that actually exist in all_paths.
-    Returns: [{source: str, target: str}]
-    """
     edges = []
     ext = file_ext(path)
     cur_dir = posixpath.dirname(path)
 
     def resolve(rel: str) -> Optional[str]:
-        """Resolve a relative import string to an actual repo path."""
         base = posixpath.normpath(posixpath.join(cur_dir, rel))
-        # Try exact match and common extension variants
         candidates = [
             base,
             base + ".ts", base + ".tsx", base + ".js", base + ".jsx",
@@ -176,26 +268,18 @@ def extract_deps(content: str, path: str, all_paths: set[str]) -> list[dict]:
         if target and target != path:
             edges.append({"source": path, "target": target})
 
-    # ── JavaScript / TypeScript ──────────────────────────────────────────
     if ext in (".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"):
-        # ES module static imports: import X from './y'
         for m in re.finditer(
             r'(?:import|export)\s+(?:[\w\s{},*]+from\s+)?[\'"](\.[^"\']+)[\'"]',
             content
         ):
             add(resolve(m.group(1)))
-
-        # CommonJS: require('./y')
         for m in re.finditer(r'require\(\s*[\'"](\.[^"\']+)[\'"]\s*\)', content):
             add(resolve(m.group(1)))
-
-        # Dynamic: import('./y')
         for m in re.finditer(r'import\s*\(\s*[\'"](\.[^"\']+)[\'"]\s*\)', content):
             add(resolve(m.group(1)))
 
-    # ── Python ──────────────────────────────────────────────────────────
     elif ext == ".py":
-        # Relative imports only: from .utils import X  /  from ..models import Y
         for m in re.finditer(r'^from\s+(\.[\w.]*)\s+import', content, re.MULTILINE):
             rel = m.group(1)
             dots = len(rel) - len(rel.lstrip("."))
@@ -207,23 +291,25 @@ def extract_deps(content: str, path: str, all_paths: set[str]) -> list[dict]:
             for suffix in ("", ".py", "/__init__.py"):
                 c = posixpath.normpath(candidate_base + suffix)
                 if c in all_paths:
-                    add(c)
-                    break
+                    add(c); break
+        for m in re.finditer(r'^(?:import|from)\s+([\w.]+)', content, re.MULTILINE):
+            mod_parts = m.group(1).split(".")
+            for depth in range(len(mod_parts), 0, -1):
+                candidate = "/".join(mod_parts[:depth])
+                for suffix in (".py", "/__init__.py"):
+                    c = candidate + suffix
+                    if c in all_paths:
+                        add(c); break
 
-    # ── Go ───────────────────────────────────────────────────────────────
     elif ext == ".go":
-        # Only internal package imports (containing the module path)
-        # We can resolve paths that match directory structure
-        for m in re.finditer(r'[\'"]([^"\']+)[\'"]', content):
+        for m in re.finditer(r'"([^"]+)"', content):
             imp = m.group(1)
-            # Heuristic: if it looks like a local path (no dots in first segment)
             parts = imp.split("/")
             if parts and "." not in parts[0]:
-                candidate = posixpath.join(*parts) + ".go" if parts else None
-                if candidate and candidate in all_paths:
+                candidate = "/".join(parts) + ".go"
+                if candidate in all_paths:
                     add(candidate)
 
-    # ── Rust ─────────────────────────────────────────────────────────────
     elif ext == ".rs":
         for m in re.finditer(r'^(?:pub\s+)?mod\s+(\w+)\s*;', content, re.MULTILINE):
             mod = m.group(1)
@@ -232,15 +318,22 @@ def extract_deps(content: str, path: str, all_paths: set[str]) -> list[dict]:
                 posixpath.join(cur_dir, mod, "mod.rs"),
             ]:
                 if c in all_paths:
-                    add(c)
-                    break
+                    add(c); break
 
-    # ── PHP ──────────────────────────────────────────────────────────────
+    elif ext == ".rb":
+        for m in re.finditer(r"require_relative\s+['\"]([^'\"]+)['\"]", content):
+            add(resolve(m.group(1)))
+
     elif ext == ".php":
         for m in re.finditer(r'(?:require|include)(?:_once)?\s*[\'"](\.[^"\']+)[\'"]', content):
             add(resolve(m.group(1)))
 
-    # Deduplicate
+    elif ext == ".java":
+        for m in re.finditer(r'^import\s+([\w.]+);', content, re.MULTILINE):
+            imp = m.group(1).replace(".", "/") + ".java"
+            if imp in all_paths:
+                add(imp)
+
     seen = set()
     result = []
     for e in edges:
@@ -256,11 +349,10 @@ def extract_deps(content: str, path: str, all_paths: set[str]) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def compute_metrics(nodes_list: list[dict], edges: list[dict]) -> dict:
-    """Compute indegree, outdegree, blast radius depth for all nodes."""
     indegree: dict[str, int] = defaultdict(int)
     outdegree: dict[str, int] = defaultdict(int)
-    dependents: dict[str, list] = defaultdict(list)   # who imports me
-    dependencies: dict[str, list] = defaultdict(list)  # what I import
+    dependents: dict[str, list] = defaultdict(list)
+    dependencies: dict[str, list] = defaultdict(list)
 
     for e in edges:
         src, tgt = e["source"], e["target"]
@@ -278,36 +370,17 @@ def compute_metrics(nodes_list: list[dict], edges: list[dict]) -> dict:
 
 
 def get_role(path: str, ind: int, outd: int, config: bool) -> str:
-    """
-    Semantic role — this drives the node color. It's the core visual insight.
-      orphan  = dead code (nothing imports it, it imports nothing, not config)
-      entry   = execution starts here (nothing imports it, but it imports others)
-      hub     = imported by 4+ files — critical, highly depended on
-      shared  = imported by 2-3 files
-      leaf    = regular file (imports others, not widely imported)
-      config  = config/docs file
-    """
-    if config:
-        return "config"
-    if ind == 0 and outd == 0:
-        return "orphan"
-    if ind == 0 and outd > 0:
-        return "entry"
-    if ind >= 4:
-        return "hub"
-    if ind >= 2:
-        return "shared"
+    if config:                 return "config"
+    if ind == 0 and outd == 0: return "orphan"
+    if ind == 0 and outd > 0:  return "entry"
+    if ind >= 4:               return "hub"
+    if ind >= 2:               return "shared"
     return "leaf"
 
 
 def blast_radius_bfs(node_id: str, edges: list[dict], depth: int = 5) -> set[str]:
-    """
-    Which files would break if node_id was deleted/changed?
-    Traverses the dependency graph backwards (who depends on me transitively).
-    """
     affected: set[str] = set()
     frontier = {node_id}
-
     for _ in range(depth):
         next_frontier: set[str] = set()
         for e in edges:
@@ -317,65 +390,333 @@ def blast_radius_bfs(node_id: str, edges: list[dict], depth: int = 5) -> set[str
         frontier = next_frontier
         if not frontier:
             break
-
     return affected
 
 
+def detect_layer(path: str) -> str:
+    lower = path.lower()
+    for layer, keywords in LAYER_HINTS.items():
+        for kw in keywords:
+            if f"/{kw}/" in f"/{lower}/" or lower.startswith(f"{kw}/"):
+                return layer
+    return "utils"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
-# LLM — Groq free tier
+# LLM — Groq with retry + backoff
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def groq(system: str, user: str, max_tokens: int = 800, json_mode: bool = False) -> str:
-    """
-    Call Groq API (free tier).
-    Model: llama-3.3-70b-versatile
-    Free limits: 14,400 req/day, 30 req/min, 6000 tokens/min
-    Sign up at console.groq.com — no credit card needed.
-    """
+_last_groq_quota: dict = {}
+
+
+async def groq(
+    system: str,
+    user: str,
+    max_tokens: int = 800,
+    json_mode: bool = False,
+    timeout: int = 60,
+    model: str = MODEL_FAST,
+    retries: int = 3,
+) -> str:
     if not GROQ_API_KEY:
         return "GROQ_API_KEY not set. Get your free key at console.groq.com"
 
     payload: dict = {
-        "model": "llama-3.3-70b-versatile",
+        "model": model,
         "max_tokens": max_tokens,
         "messages": [
             {"role": "system", "content": system},
-            {"role": "user", "content": user},
+            {"role": "user",   "content": user},
         ],
-        "temperature": 0.1,
+        "temperature": 0.15,
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
 
-    try:
-        async with httpx.AsyncClient(timeout=25) as client:
-            r = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {GROQ_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-        if r.status_code == 429:
-            return "Rate limited by Groq. Try again in a moment."
-        if r.status_code != 200:
-            return f"Groq error {r.status_code}: {r.text[:200]}"
-        return r.json()["choices"][0]["message"]["content"]
-    except Exception as ex:
-        return f"LLM request failed: {str(ex)}"
+    last_error = ""
+    for attempt in range(retries):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                r = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {GROQ_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+
+            _last_groq_quota.update({
+                "remaining_requests": r.headers.get("x-ratelimit-remaining-requests"),
+                "remaining_tokens":   r.headers.get("x-ratelimit-remaining-tokens"),
+                "reset_requests":     r.headers.get("x-ratelimit-reset-requests"),
+                "reset_tokens":       r.headers.get("x-ratelimit-reset-tokens"),
+                "model": model,
+            })
+
+            if r.status_code == 429:
+                wait_secs = 2 ** attempt
+                reset_after = r.headers.get("retry-after") or r.headers.get("x-ratelimit-reset-requests")
+                if reset_after:
+                    try:
+                        wait_secs = min(float(reset_after.rstrip("s")), 30)
+                    except ValueError:
+                        pass
+                print(f"[Groq 429] attempt {attempt+1}/{retries}, waiting {wait_secs}s (model={model})")
+                await asyncio.sleep(wait_secs)
+                continue
+
+            if r.status_code != 200:
+                last_error = f"Groq error {r.status_code}: {r.text[:200]}"
+                await asyncio.sleep(1)
+                continue
+
+            return r.json()["choices"][0]["message"]["content"]
+
+        except httpx.TimeoutException:
+            last_error = f"Groq request timed out (attempt {attempt+1})"
+            await asyncio.sleep(1)
+        except Exception as ex:
+            last_error = f"LLM request failed: {str(ex)}"
+            await asyncio.sleep(1)
+
+    return last_error or "Groq request failed after retries."
 
 
 def safe_json_parse(text: str) -> dict:
-    """Parse JSON from LLM output, stripping markdown fences if present."""
     text = text.strip()
     if text.startswith("```"):
         text = re.sub(r"^```\w*\n?", "", text)
         text = re.sub(r"\n?```$", "", text.strip())
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except Exception:
+            pass
     try:
         return json.loads(text)
     except Exception:
         return {}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Architecture: 2-pass JSON graph pipeline
+# ─────────────────────────────────────────────────────────────────────────────
+
+ARCH_EXPLAIN_SYSTEM = """You are a principal software engineer analyzing a repository.
+You will receive a file tree and project description.
+Explain the repository architecture in a way that helps draw an accurate system diagram.
+
+Requirements:
+- Be concrete and repo-specific. Reference actual directory/file names.
+- Identify main subsystems, data flows, and important boundaries.
+- Mention technologies only when they materially affect the architecture.
+- Write 8-14 short sections or paragraphs. Be high-signal, not exhaustive.
+- Do not use Mermaid syntax, JSON, or pseudo-code.
+- Do not assume it is a web app — it could be any project type.
+
+Return only the explanation text. No headers, no preamble."""
+
+
+ARCH_GRAPH_SYSTEM = """You are a repository-to-graph planner.
+You produce a clean, high-signal architecture graph from a plain-English explanation.
+
+Return ONLY valid JSON matching this exact schema:
+{
+  "nodes": [
+    {
+      "id": "unique_snake_case_id",
+      "label": "1-4 word human label",
+      "type": "short description of what it does (shown as subtitle)",
+      "group": "group id this node belongs to, or null"
+    }
+  ],
+  "edges": [
+    {
+      "from": "source_node_id",
+      "to": "target_node_id",
+      "label": "optional short verb (e.g. calls, reads, emits)",
+      "style": "solid | dashed | thick"
+    }
+  ],
+  "groups": [
+    {
+      "id": "unique_group_id",
+      "label": "Layer or subsystem name"
+    }
+  ]
+}
+
+Rules:
+- 14-24 nodes is the target. Fewer is better if it still captures the architecture.
+- 10-30 edges. Only meaningful relationships.
+- 0-6 groups. Use groups for clear architectural layers only.
+- Use "thick" style for critical/main data flow edges.
+- Use "dashed" style for optional or async relationships.
+- Use "solid" for normal dependencies.
+- Collapse test files, tiny helpers, and config files into one node unless central.
+- Short human labels. Prefer nouns. No file extensions in labels.
+- Do not emit Mermaid syntax, URLs, or any text outside the JSON object."""
+
+
+async def _generate_arch_graph(
+    owner: str,
+    repo: str,
+    description: str,
+    tech_stack: list[str],
+    architecture: str,
+    key_modules: list[str],
+    file_tree_summary: str,
+    languages: dict,
+    entry_points: list[str],
+    top_hubs: list,
+) -> dict:
+    tech_str     = ", ".join(tech_stack) if tech_stack else "unknown"
+    lang_str     = ", ".join(f"{k}({v})" for k, v in languages.items() if v > 0)
+    entry_str    = ", ".join(entry_points[:5]) if entry_points else "none detected"
+    hubs_str     = "\n".join(
+        f"- {h['name']} (imported by {h['indegree']} files)"
+        for h in (top_hubs or [])[:6]
+    ) or "- none"
+    modules_str  = "\n".join(f"- {m}" for m in key_modules[:8]) or "- none detected"
+
+    tree_lines   = file_tree_summary.strip().split("\n")
+    tree_trimmed = "\n".join(tree_lines[:80])
+
+    # Pass 1: plain-English explanation (fast model)
+    explanation_raw = await groq(
+        system=ARCH_EXPLAIN_SYSTEM,
+        user=f"""Repository: {owner}/{repo}
+Pattern: {architecture}
+Tech stack: {tech_str}
+Languages: {lang_str}
+Entry points: {entry_str}
+
+Key modules:
+{modules_str}
+
+Most-imported files:
+{hubs_str}
+
+<file_tree>
+{tree_trimmed}
+</file_tree>
+
+<readme>
+{description[:600]}
+</readme>""",
+        max_tokens=700,
+        model=MODEL_FAST,
+        retries=3,
+    )
+
+    explanation = explanation_raw.strip()
+
+    # Pass 2: structured JSON graph (quality model)
+    graph_raw = await groq(
+        system=ARCH_GRAPH_SYSTEM,
+        user=f"""<explanation>
+{explanation}
+</explanation>
+
+<repo_owner>{owner}</repo_owner>
+<repo_name>{repo}</repo_name>
+
+<file_tree>
+{tree_trimmed}
+</file_tree>""",
+        max_tokens=1200,
+        json_mode=True,
+        model=MODEL_QUALITY,
+        retries=3,
+        timeout=90,
+    )
+
+    graph = safe_json_parse(graph_raw)
+
+    if not graph or "nodes" not in graph:
+        graph = {"nodes": [], "edges": [], "groups": []}
+
+    for node in graph.get("nodes", []):
+        node.setdefault("type", "")
+        node.setdefault("group", None)
+
+    for edge in graph.get("edges", []):
+        edge.setdefault("label", "")
+        edge.setdefault("style", "solid")
+
+    node_ids = {n["id"] for n in graph.get("nodes", [])}
+    graph["edges"] = [
+        e for e in graph.get("edges", [])
+        if e.get("from") in node_ids and e.get("to") in node_ids
+           and e.get("from") != e.get("to")
+    ]
+
+    return {
+        "title": f"{repo} Architecture",
+        "explanation": explanation,
+        "graph": graph,
+        "mermaid": None,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# README system prompt — developer-loved format
+# ─────────────────────────────────────────────────────────────────────────────
+
+README_SYSTEM = """You are a senior open-source developer writing a world-class README.md.
+
+The README you produce must follow the format that developers love and star:
+
+STRUCTURE (in this exact order):
+1. Centered header block:
+   - HTML <div align="center"> wrapper
+   - H1 project name
+   - Italic one-line tagline
+   - Blank line
+   - shields.io badges row (language, license MIT, stars, last commit, issues)
+   - Blank line, close </div>
+
+2. Table of Contents (linked anchors, 6-8 items)
+
+3. ## ✨ Features
+   - 6-8 bullets, each starting with a bold keyword specific to THIS codebase
+   - Reference actual module/file names where relevant
+
+4. ## 🏗️ Architecture
+   - 2-3 sentences describing the actual pattern
+   - ASCII flow diagram referencing real module names (use →, │, ├──, └──)
+
+5. ## 🛠️ Tech Stack
+   | Technology | Role | Notes |
+   Three-column markdown table. Be specific, not generic.
+
+6. ## 🚀 Getting Started
+   ### Prerequisites
+   ### Installation
+   Shell code blocks with actual commands for the detected stack.
+
+7. ## 💡 Usage
+   2-3 realistic examples with shell/code blocks referencing actual entry points.
+
+8. ## 📁 Project Structure
+   Annotated file tree, max 20 lines, with inline comments after each path.
+
+9. ## 🤝 Contributing
+   Short paragraph + standard fork → branch → PR workflow.
+
+10. ## 📄 License
+    MIT license line with badge.
+
+RULES:
+- Output raw Markdown only. No preamble, no "Here is your README".
+- Every section must be specific to the actual repo — no generic lorem ipsum.
+- shields.io badge format: ![badge](https://img.shields.io/badge/LABEL-VALUE-COLOR?style=flat-square&logo=LOGO&logoColor=white)
+- For GitHub-dynamic badges use: https://img.shields.io/github/METRIC/OWNER/REPO?style=flat-square
+- ASCII diagrams: use box-drawing chars (─, │, ├, └, →) not hyphens.
+- Never mention RepoGami, AI generation, or any tooling used to create this README.
+- Never use placeholder text like [your name] or [link here] — infer from context."""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -384,14 +725,27 @@ def safe_json_parse(text: str) -> dict:
 
 @app.get("/")
 async def root():
-    return {"status": "RepoGami API v1", "docs": "/docs"}
+    return {
+        "status": "RepoGami API v3",
+        "docs": "/docs",
+        "quota": _last_groq_quota or "no requests made yet",
+    }
+
+
+@app.get("/quota")
+async def quota():
+    return _last_groq_quota or {"message": "No Groq calls made yet in this process."}
 
 
 @app.post("/analyze")
 async def analyze(req: AnalyzeRequest):
     owner, repo = parse_github_url(req.repo_url)
+    cache_key = f"{owner}/{repo}"
 
-    # ── 1. Fetch file tree (single API call, no cloning) ─────────────────
+    cached = _analyze_cache.get(cache_key)
+    if cached:
+        return {**cached, "_cached": True}
+
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.get(
             f"https://api.github.com/repos/{owner}/{repo}/git/trees/HEAD?recursive=1",
@@ -409,23 +763,17 @@ async def analyze(req: AnalyzeRequest):
     all_items = tree.get("tree", [])
     truncated = tree.get("truncated", False)
 
-    # ── 2. Filter files ───────────────────────────────────────────────────
     files = [
         item for item in all_items
         if item["type"] == "blob" and not should_skip(item["path"])
     ]
 
-    # Cap: prioritize source files
     source_files = [f for f in files if file_ext(f["path"]) in PARSEABLE_EXT]
     config_files = [f for f in files if is_config(f["path"])]
     other_files  = [f for f in files if f not in source_files and f not in config_files]
-
-    # Keep up to 300 source, 50 config, 50 other
     files = source_files[:300] + config_files[:50] + other_files[:50]
-
     all_paths = {f["path"] for f in files}
 
-    # ── 3. Fetch file contents for dep parsing (concurrent, capped) ───────
     to_fetch = [f for f in files if file_ext(f["path"]) in PARSEABLE_EXT][:100]
     contents: dict[str, str] = {}
 
@@ -436,24 +784,19 @@ async def analyze(req: AnalyzeRequest):
                 headers=gh_headers(),
             )
             if r.status_code == 200:
-                contents[path] = r.text[:8000]  # cap per file
+                contents[path] = r.text[:8000]
         except Exception:
             pass
 
     async with httpx.AsyncClient(timeout=30) as client:
-        # Batch into groups of 20 to avoid overwhelming GitHub
-        for i in range(0, len(to_fetch), 20):
-            batch = to_fetch[i:i+20]
+        for i in range(0, len(to_fetch), 40):
+            batch = to_fetch[i:i+40]
             await asyncio.gather(*[fetch_file(f["path"], client) for f in batch])
-            if i + 20 < len(to_fetch):
-                await asyncio.sleep(0.1)  # small pause between batches
 
-    # ── 4. Extract dependency edges ────────────────────────────────────────
     edges: list[dict] = []
     for path, content in contents.items():
         edges.extend(extract_deps(content, path, all_paths))
 
-    # Deduplicate
     seen_e: set[tuple] = set()
     unique_edges = []
     for e in edges:
@@ -463,22 +806,11 @@ async def analyze(req: AnalyzeRequest):
             unique_edges.append(e)
     edges = unique_edges
 
-    # ── 5. Compute graph metrics ───────────────────────────────────────────
     metrics = compute_metrics(files, edges)
     ind = metrics["indegree"]
     outd = metrics["outdegree"]
     deps_of = metrics["dependencies"]
     dependents_of = metrics["dependents"]
-
-    # ── 6. Build enriched node list ────────────────────────────────────────
-    # Build directory tree structure for file tree panel
-    dir_tree: dict = {}
-    for f in files:
-        parts = f["path"].split("/")
-        node = dir_tree
-        for part in parts[:-1]:
-            node = node.setdefault(part, {})
-        node[parts[-1]] = None  # leaf file
 
     nodes = []
     for f in files:
@@ -503,15 +835,12 @@ async def analyze(req: AnalyzeRequest):
             "outdegree": o,
             "dependents": dependents_of.get(path, [])[:15],
             "dependencies": deps_of.get(path, [])[:15],
-            # Derived flags for UI
             "is_orphan": role == "orphan",
             "is_entry":  role == "entry",
             "is_hub":    role == "hub",
             "is_config": config,
         })
 
-    # ── 7. AI summary (Groq) ───────────────────────────────────────────────
-    # Collect representative content for the LLM
     key_filenames = [
         "README.md", "package.json", "pyproject.toml", "requirements.txt",
         "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "composer.json",
@@ -523,48 +852,50 @@ async def analyze(req: AnalyzeRequest):
         for item in files:
             if os.path.basename(item["path"]) == fname and item["path"] in contents:
                 key_content_parts.append(
-                    f"=== {item['path']} ===\n{contents[item['path']][:1000]}"
+                    f"=== {item['path']} ===\n{contents[item['path']][:800]}"
                 )
                 break
 
-    # Entry points content
     entry_nodes = [n for n in nodes if n["is_entry"]][:3]
+    seen_paths = {k.split("===")[1].strip() for k in key_content_parts if "===" in k}
     for n in entry_nodes:
-        if n["path"] in contents and n["path"] not in [k.split("===")[1].strip() for k in key_content_parts]:
+        if n["path"] in contents and n["path"] not in seen_paths:
             key_content_parts.append(
-                f"=== {n['path']} (entry point) ===\n{contents[n['path']][:600]}"
+                f"=== {n['path']} (entry point) ===\n{contents[n['path']][:500]}"
             )
 
-    file_list = "\n".join(f["path"] for f in files[:120])
-    key_content = "\n\n".join(key_content_parts[:6])
+    file_list   = "\n".join(f["path"] for f in files[:100])
+    key_content = "\n\n".join(key_content_parts[:5])
 
     summary_raw = await groq(
         system="You are a senior software architect. Analyze codebases. Return only valid JSON.",
-        user=f"""Analyze: {owner}/{repo}
-Files ({len(files)} total, first 120):
+        user=f"""Analyze this GitHub repository: {owner}/{repo}
+
+File list ({len(files)} total, first 100 shown):
 {file_list}
 
 Key file contents:
 {key_content}
 
-Return ONLY a JSON object (no markdown, no preamble):
+Return ONLY a valid JSON object (no markdown fences, no extra text):
 {{
-  "project_name": "string",
-  "tagline": "one sentence, what this does",
-  "description": "2-3 sentences, what the project does and for whom",
-  "tech_stack": ["primary", "technologies"],
-  "architecture": "e.g. REST API, monorepo, microservices, CLI tool, library",
-  "entry_points": ["main files where execution begins"],
-  "key_modules": ["3-5 most important directories or modules with 1-line description each, format: path: description"],
+  "project_name": "human-readable project name",
+  "tagline": "one sharp sentence — what it does and for whom",
+  "description": "2-3 sentences: what the project does, who uses it, what problem it solves",
+  "tech_stack": ["list", "of", "primary", "technologies"],
+  "architecture": "single pattern label, e.g.: REST API, CLI tool, monorepo, library",
+  "entry_points": ["list of files where execution begins"],
+  "key_modules": ["path/to/module: one-line description", "...up to 6"],
   "complexity": "low | medium | high",
   "insights": [
-    "one specific observation about this codebase structure",
-    "one potential issue or area for improvement",
-    "one thing this project does unusually well or unusually"
+    "one specific structural observation",
+    "one concrete improvement suggestion",
+    "one thing done unusually well"
   ]
 }}""",
-        max_tokens=700,
+        max_tokens=600,
         json_mode=True,
+        model=MODEL_FAST,
     )
 
     summary = safe_json_parse(summary_raw)
@@ -581,7 +912,6 @@ Return ONLY a JSON object (no markdown, no preamble):
             "insights": [],
         }
 
-    # ── 8. Stats ───────────────────────────────────────────────────────────
     lang_counts: dict[str, int] = defaultdict(int)
     role_counts: dict[str, int] = defaultdict(int)
     for n in nodes:
@@ -590,8 +920,7 @@ Return ONLY a JSON object (no markdown, no preamble):
 
     top_hubs = sorted(
         [n for n in nodes if n["is_hub"]],
-        key=lambda n: n["indegree"],
-        reverse=True,
+        key=lambda n: n["indegree"], reverse=True,
     )[:5]
 
     stats = {
@@ -606,7 +935,7 @@ Return ONLY a JSON object (no markdown, no preamble):
         "role_counts": dict(role_counts),
     }
 
-    return {
+    result = {
         "graph": {"nodes": nodes, "links": edges},
         "summary": summary,
         "stats": stats,
@@ -619,13 +948,14 @@ Return ONLY a JSON object (no markdown, no preamble):
         },
     }
 
+    _analyze_cache.set(cache_key, result)
+    return result
+
 
 @app.post("/ask")
 async def ask(req: AskRequest):
-    """Ask the AI anything about a specific file in the context of the codebase."""
     owner, repo = parse_github_url(req.repo_url)
 
-    # Fetch the actual file content
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.get(
             f"https://raw.githubusercontent.com/{owner}/{repo}/HEAD/{req.file_path}",
@@ -633,28 +963,26 @@ async def ask(req: AskRequest):
         )
     file_content = r.text[:4000] if r.status_code == 200 else "[Content unavailable]"
 
-    # Build context from subgraph
-    imports = [e["target"] for e in req.subgraph if e.get("source") == req.file_path]
+    imports     = [e["target"] for e in req.subgraph if e.get("source") == req.file_path]
     imported_by = [e["source"] for e in req.subgraph if e.get("target") == req.file_path]
 
     answer = await groq(
-        system="""You are an expert software engineer doing codebase navigation and analysis.
-You're given a specific file and its relationship to other files in the codebase.
-Be direct, technical, and specific. Reference actual code when relevant.
-If asked about blast radius / what would break, reason through the dependency chain.
-Format your answer with clear paragraphs. Use code blocks for code snippets.""",
-        user=f"""Repository file: {req.file_path}
+        system="""You are an expert software engineer doing codebase analysis.
+You have been given a specific file and its dependency relationships.
+Be direct, technical, and precise. Reference actual code identifiers when relevant.
+Use code blocks (triple backticks with language tag) for code snippets.
+If asked about blast radius, trace the dependency chain explicitly.
+Format with clear short paragraphs. No generic disclaimers.""",
+        user=f"""File: {req.file_path}
 
-This file imports: {imports if imports else ['nothing (leaf or entry point)']}
-Imported by: {imported_by if imported_by else ['nothing — this is an orphan or entry point']}
+Imports (outgoing deps): {imports or ['none']}
+Imported by (incoming deps): {imported_by or ['none']}
 
 File content:
-```
-{file_content}
-```
 
 Question: {req.question}""",
-        max_tokens=600,
+        max_tokens=700,
+        model=MODEL_FAST,
     )
 
     return {
@@ -669,10 +997,6 @@ Question: {req.question}""",
 
 @app.post("/blast-radius")
 async def blast_radius_route(req: BlastRequest):
-    """
-    Compute which files would break if the given node was deleted/changed.
-    Returns the set of affected file IDs at each depth level.
-    """
     affected_by_depth = []
     frontier = {req.node_id}
     all_affected: set[str] = set()
@@ -695,68 +1019,107 @@ async def blast_radius_route(req: BlastRequest):
         "affected_files": list(all_affected),
         "by_depth": affected_by_depth,
     }
-    
-class ReadmeRequest(BaseModel):
-    repo_url: str
-    project_name: str
-    tagline: str
-    description: str
-    tech_stack: list[str]
-    architecture: str
-    entry_points: list[str]
-    key_modules: list[str]
-    insights: list[str]
-    total_files: int
-    total_edges: int
-    languages: dict  # {lang: count}
-    file_tree_summary: str  # first 100 file paths, condensed
 
 
 @app.post("/generate-readme")
 async def generate_readme(req: ReadmeRequest):
-    """
-    Generate a professional README.md for the analysed repository.
-    Expects the summary data that already exists on the frontend.
-    """
-    # Build a rich prompt
-    tech_stack_str = ", ".join(req.tech_stack) if req.tech_stack else "not detected"
-    lang_summary = ", ".join(f"{lang} ({count} files)" for lang, count in req.languages.items() if count > 0)
-    key_modules_str = "\n".join(f"- {m}" for m in req.key_modules) if req.key_modules else "- None detected"
-    insights_str = "\n".join(f"- {ins}" for ins in req.insights) if req.insights else "- None"
-    entry_str = ", ".join(req.entry_points[:5]) if req.entry_points else "not detected"
+    owner, repo = parse_github_url(req.repo_url)
 
-    prompt = f"""You are an expert technical writer. Create a **professional README.md** for the following project.
+    tech_str    = ", ".join(req.tech_stack) if req.tech_stack else "unknown"
+    lang_str    = "\n".join(
+        f"  - {lang}: {count} files"
+        for lang, count in req.languages.items() if count > 0
+    )
+    modules_str = "\n".join(f"  - {m}" for m in req.key_modules) if req.key_modules else "  - (none detected)"
+    insights_str = "\n".join(f"  - {i}" for i in req.insights) if req.insights else "  - (none)"
+    entry_str   = ", ".join(req.entry_points[:5]) if req.entry_points else "not detected"
+    top_hubs_str = "\n".join(
+        f"  - {h['name']} (imported by {h['indegree']} files)"
+        for h in (req.top_hubs or [])[:5]
+    ) or "  - (none)"
 
-PROJECT DETAILS:
-- Name: {req.project_name}
+    # Determine primary language for badge color
+    primary_lang = list(req.languages.keys())[0] if req.languages else "unknown"
+    lang_badge_colors = {
+        "python": "3776AB", "javascript": "F7DF1E", "typescript": "3178C6",
+        "go": "00ADD8", "rust": "CE422B", "java": "007396",
+        "csharp": "239120", "ruby": "CC342D", "php": "777BB4",
+    }
+    lang_color = lang_badge_colors.get(primary_lang, "6B7280")
+
+    prompt = f"""Write a world-class README.md for the GitHub repository {owner}/{repo}.
+
+REPOSITORY DATA (use all of it, be specific):
+- Project name: {req.project_name}
 - Tagline: {req.tagline}
 - Description: {req.description}
-- Architecture: {req.architecture}
-- Tech Stack: {tech_stack_str}
-- Primary languages: {lang_summary}
+- Architecture pattern: {req.architecture}
+- Complexity: {req.complexity}
+- Primary language: {primary_lang} (badge color: #{lang_color})
+- Tech stack: {tech_str}
 - Entry points: {entry_str}
-- Total files: {req.total_files}
-- Dependency edges: {req.total_edges}
+- Total files: {req.total_files} | Dependency edges: {req.total_edges} | Orphan files: {req.orphan_count}
+- Languages breakdown:
+{lang_str}
 - Key modules:
-{key_modules_str}
-- AI insights:
+{modules_str}
+- Most-imported hub files:
+{top_hubs_str}
+- Codebase insights:
 {insights_str}
-- File tree (first 100):
-{req.file_tree_summary}
+- File tree sample (first 40 paths):
+{req.file_tree_summary[:800]}
 
-REQUIREMENTS:
-1. Use proper Markdown (headings, badges, code blocks, tables where helpful).
-2. Add relevant badges (build, license, stars, language, etc.) — use shield.io style if possible.
-3. Include sections: Overview, Features, Tech Stack, Getting Started, Architecture, Project Structure, Usage, Contributing, License.
-4. The "Getting Started" section must include realistic installation and running instructions based on the tech stack (use npm/pip/cargo etc.).
-5. Make it visually appealing with a logo placeholder (use `<p align="center">` for centering).
-6. Do NOT mention RepoGami or this generation.
-7. Output ONLY the raw Markdown. No surrounding text, no explanation."""
+BADGE REQUIREMENTS — include all of these in the centered header:
+1. Language badge: ![{primary_lang}](https://img.shields.io/badge/{primary_lang}-#{lang_color}?style=flat-square&logo={primary_lang}&logoColor=white)
+2. License: ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
+3. Stars: ![Stars](https://img.shields.io/github/stars/{owner}/{repo}?style=flat-square&color=yellow)
+4. Last commit: ![Last Commit](https://img.shields.io/github/last-commit/{owner}/{repo}?style=flat-square)
+5. Issues: ![Issues](https://img.shields.io/github/issues/{owner}/{repo}?style=flat-square)
+6. Add 1-2 more relevant badges based on the tech stack (e.g. FastAPI, React, Docker, etc.)
+
+Follow the system instructions exactly. Output only the raw README.md content."""
 
     readme_md = await groq(
-        system="You write world-class README files for open-source projects. Be precise and beautiful.",
+        system=README_SYSTEM,
         user=prompt,
-        max_tokens=1200,
+        max_tokens=2200,
+        model=MODEL_FAST,
     )
 
     return {"readme": readme_md}
+
+
+@app.post("/generate-architecture")
+async def generate_architecture(req: ArchitectureRequest):
+    owner, repo = parse_github_url(req.repo_url)
+    cache_key = f"{owner}/{repo}"
+
+    if not req.force_refresh:
+        cached = _arch_cache.get(cache_key)
+        if cached:
+            return {**cached, "_cached": True}
+
+    result = await _generate_arch_graph(
+        owner=owner,
+        repo=repo,
+        description=req.description,
+        tech_stack=req.tech_stack,
+        architecture=req.architecture,
+        key_modules=req.key_modules,
+        file_tree_summary=req.file_tree_summary,
+        languages=req.languages,
+        entry_points=req.entry_points or [],
+        top_hubs=req.top_hubs or [],
+    )
+
+    _arch_cache.set(cache_key, result)
+    return result
+
+
+@app.delete("/cache/{owner}/{repo}")
+async def clear_cache(owner: str, repo: str):
+    key = f"{owner}/{repo}"
+    _analyze_cache.invalidate(key)
+    _arch_cache.invalidate(key)
+    return {"cleared": key}
