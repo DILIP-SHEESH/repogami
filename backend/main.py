@@ -171,6 +171,9 @@ class BlastShareRequest(BaseModel):
     file_path: str
     depth: Optional[int] = 5
 
+class RepoDnaShareRequest(BaseModel):
+    repo_url: str
+
 class ReadmeRequest(BaseModel):
     repo_url: str
     project_name: str
@@ -406,6 +409,430 @@ def detect_layer(path: str) -> str:
             if f"/{kw}/" in f"/{lower}/" or lower.startswith(f"{kw}/"):
                 return layer
     return "utils"
+
+
+def compute_codebase_vitals(nodes: list[dict], edges: list[dict], stats: dict) -> dict:
+    """
+    Deterministic codebase intelligence — no LLM.
+    Powers health score, smell radar, and refactor playbook.
+    """
+    total = len(nodes) or 1
+    edge_count = len(edges)
+    orphans = stats.get("orphan_count", 0)
+    hubs = stats.get("hub_count", 0)
+
+    parseable = [n for n in nodes if not n.get("is_config")]
+    parseable_n = len(parseable) or 1
+
+    total_in = sum(n.get("indegree", 0) for n in parseable)
+    hub_in = sum(n.get("indegree", 0) for n in parseable if n.get("is_hub"))
+    hub_concentration = round(hub_in / max(total_in, 1) * 100, 1)
+
+    orphan_ratio = round(orphans / parseable_n * 100, 1)
+    coupling_index = round(edge_count / max(parseable_n, 1), 2)
+
+    layer_counts: dict[str, int] = defaultdict(int)
+    for n in parseable:
+        layer_counts[detect_layer(n["path"])] += 1
+    dominant_layer = max(layer_counts, key=layer_counts.get) if layer_counts else "utils"
+    layer_entropy = len([c for c in layer_counts.values() if c >= max(2, parseable_n * 0.02)])
+
+    god_files = sorted(
+        [n for n in parseable if n.get("indegree", 0) >= 5],
+        key=lambda n: n.get("indegree", 0),
+        reverse=True,
+    )[:6]
+
+    # Approximate 2-cycles (mutual import risk)
+    adj: dict[str, set[str]] = defaultdict(set)
+    for e in edges:
+        adj[e["source"]].add(e["target"])
+    cycles_2 = []
+    seen_pairs: set[tuple] = set()
+    for a, targets in adj.items():
+        for b in targets:
+            if a in adj.get(b, set()):
+                pair = tuple(sorted([a, b]))
+                if pair not in seen_pairs:
+                    seen_pairs.add(pair)
+                    cycles_2.append({"a": a, "b": b, "a_name": os.path.basename(a), "b_name": os.path.basename(b)})
+
+    health = 100
+    health -= min(int(orphan_ratio * 1.8), 28)
+    health -= min(int(hub_concentration * 0.35), 22)
+    health -= min(int(coupling_index * 4), 18)
+    health -= min(len(cycles_2) * 4, 16)
+    health -= min(hubs * 2, 12)
+    health = max(0, min(100, health))
+
+    if health >= 78:
+        grade, grade_color = "Thriving", "#22c55e"
+    elif health >= 58:
+        grade, grade_color = "Stable", "#3b82f6"
+    elif health >= 38:
+        grade, grade_color = "Fragile", "#eab308"
+    else:
+        grade, grade_color = "Critical", "#ef4444"
+
+    smells: list[dict] = []
+
+    if orphan_ratio >= 12:
+        smells.append({
+            "id": "orphan_swarm",
+            "severity": "high" if orphan_ratio >= 20 else "medium",
+            "title": "Orphan file swarm",
+            "detail": f"{orphans} files ({orphan_ratio}%) have zero import relationships — likely dead code or missing edges.",
+            "metric": orphan_ratio,
+            "inspect_ids": [n["id"] for n in parseable if n.get("is_orphan")][:12],
+        })
+
+    if hub_concentration >= 35:
+        smells.append({
+            "id": "hub_monopoly",
+            "severity": "high" if hub_concentration >= 50 else "medium",
+            "title": "Hub monopoly",
+            "detail": f"{hub_concentration}% of all incoming deps land on hub files — one change ripples everywhere.",
+            "metric": hub_concentration,
+            "inspect_ids": [n["id"] for n in parseable if n.get("is_hub")][:8],
+        })
+
+    for gf in god_files[:3]:
+        smells.append({
+            "id": f"god_{gf['id']}",
+            "severity": "high",
+            "title": f"God file: {gf['name']}",
+            "detail": f"Imported by {gf['indegree']} files — architectural gravity well.",
+            "metric": gf["indegree"],
+            "inspect_ids": [gf["id"]],
+        })
+
+    for c in cycles_2[:4]:
+        smells.append({
+            "id": f"cycle_{c['a']}_{c['b']}",
+            "severity": "medium",
+            "title": f"Mutual import: {c['a_name']} ↔ {c['b_name']}",
+            "detail": "Circular coupling at file level — extract a shared module or invert dependency.",
+            "metric": 2,
+            "inspect_ids": [c["a"], c["b"]],
+        })
+
+    if layer_entropy <= 2 and parseable_n > 40:
+        smells.append({
+            "id": "flat_structure",
+            "severity": "low",
+            "title": "Flat architecture",
+            "detail": f"Most code lives in '{dominant_layer}' — weak layer boundaries make refactors expensive.",
+            "metric": layer_entropy,
+            "inspect_ids": [],
+        })
+
+    playbook: list[dict] = []
+
+    if orphans >= 8:
+        playbook.append({
+            "priority": 1,
+            "action": "Orphan audit sprint",
+            "why": f"{orphans} disconnected files — delete or wire them before they rot.",
+            "effort": "1–2 days",
+            "impact": "high",
+        })
+
+    if god_files:
+        top = god_files[0]
+        playbook.append({
+            "priority": 1 if top["indegree"] >= 8 else 2,
+            "action": f"Split gravity well: {top['name']}",
+            "why": f"{top['indegree']} dependents — extract interfaces so blast radius shrinks.",
+            "effort": "3–5 days",
+            "impact": "critical",
+            "target_id": top["id"],
+        })
+
+    if cycles_2:
+        c0 = cycles_2[0]
+        playbook.append({
+            "priority": 2,
+            "action": f"Break cycle {c0['a_name']} ↔ {c0['b_name']}",
+            "why": "Mutual imports block clean layering and test isolation.",
+            "effort": "half day",
+            "impact": "medium",
+            "target_id": c0["a"],
+        })
+
+    if hub_concentration >= 45:
+        playbook.append({
+            "priority": 2,
+            "action": "Introduce facade layer",
+            "why": "Hub monopoly means PRs touch the same files repeatedly — add a thin API boundary.",
+            "effort": "1 week",
+            "impact": "high",
+        })
+
+    if stats.get("entry_count", 0) > 6:
+        playbook.append({
+            "priority": 3,
+            "action": "Consolidate entry points",
+            "why": f"{stats['entry_count']} entry files — newcomers won't know where execution starts.",
+            "effort": "2 days",
+            "impact": "medium",
+        })
+
+    if not playbook:
+        playbook.append({
+            "priority": 3,
+            "action": "Maintain current structure",
+            "why": "Graph metrics look healthy — focus on tests and docs instead of structural surgery.",
+            "effort": "ongoing",
+            "impact": "low",
+        })
+
+    playbook.sort(key=lambda x: x["priority"])
+
+    return {
+        "health_score": health,
+        "health_grade": grade,
+        "health_color": grade_color,
+        "metrics": {
+            "coupling_index": coupling_index,
+            "orphan_ratio_pct": orphan_ratio,
+            "hub_concentration_pct": hub_concentration,
+            "mutual_import_pairs": len(cycles_2),
+            "layer_diversity": layer_entropy,
+            "dominant_layer": dominant_layer,
+        },
+        "layers": dict(sorted(layer_counts.items(), key=lambda x: x[1], reverse=True)),
+        "smell_radar": smells[:8],
+        "refactor_playbook": playbook[:6],
+        "god_files": [
+            {"id": n["id"], "name": n["name"], "indegree": n["indegree"], "path": n["path"]}
+            for n in god_files
+        ],
+        "tagline": _vitals_tagline(health, smells, hub_concentration, orphan_ratio),
+    }
+
+
+def _vitals_tagline(health: int, smells: list, hub_pct: float, orphan_pct: float) -> str:
+    if health >= 78:
+        return "Structure is resilient — changes stay local."
+    if hub_pct >= 45:
+        return "Hub-heavy graph — treat every hub edit like a production deploy."
+    if orphan_pct >= 18:
+        return "Swiss-cheese codebase — lots of disconnected surface area."
+    if len(smells) >= 4:
+        return f"{len(smells)} structural smells detected — refactor before velocity dies."
+    return "Mixed signals — inspect blast radius before large refactors."
+
+
+def compute_contributor_compass(nodes: list[dict], edges: list[dict]) -> list[dict]:
+    """
+    Ordered reading path for someone landing in the repo cold.
+    Entry → spine toward hub → the gravity well itself.
+    """
+    deps: dict[str, list[str]] = defaultdict(list)
+    for e in edges:
+        deps[e["source"]].append(e["target"])
+
+    parseable = [n for n in nodes if not n.get("is_config")]
+    by_id = {n["id"]: n for n in parseable}
+
+    entries = [n["id"] for n in parseable if n.get("is_entry")]
+    if not entries:
+        entries = [
+            n["id"] for n in sorted(parseable, key=lambda x: x.get("outdegree", 0), reverse=True)
+            if n.get("outdegree", 0) > 0
+        ][:2]
+
+    hub = max(parseable, key=lambda n: n.get("indegree", 0), default=None)
+    compass: list[dict] = []
+    seen: set[str] = set()
+
+    def push(path: str, reason: str, step: int):
+        if path in seen or path not in by_id:
+            return
+        seen.add(path)
+        n = by_id[path]
+        compass.append({
+            "step": step,
+            "path": path,
+            "name": n["name"],
+            "role": n.get("role", "leaf"),
+            "reason": reason,
+            "indegree": n.get("indegree", 0),
+        })
+
+    step = 1
+    for ep in entries[:2]:
+        push(ep, "Execution starts here — read first", step)
+        step += 1
+
+    if entries:
+        frontier = list(entries[:1])
+        for hop in range(1, 4):
+            next_f: list[str] = []
+            for fid in frontier:
+                for dep in deps.get(fid, [])[:4]:
+                    if dep not in seen:
+                        push(dep, f"On the spine from entry (hop {hop})", step)
+                        step += 1
+                        next_f.append(dep)
+            frontier = next_f
+            if len(compass) >= 6:
+                break
+
+    if hub and hub["id"] not in seen:
+        ind = hub.get("indegree", 0)
+        push(
+            hub["id"],
+            f"Gravity well — {ind} file{'s' if ind != 1 else ''} depend on this",
+            step,
+        )
+
+    if len(compass) < 5:
+        for n in sorted(parseable, key=lambda x: x.get("indegree", 0), reverse=True)[:3]:
+            if len(compass) >= 7:
+                break
+            push(n["id"], "High fan-in — shapes how the system moves", step)
+            step += 1
+
+    for i, c in enumerate(compass):
+        c["step"] = i + 1
+    return compass[:7]
+
+
+def compute_repo_dna(
+    owner: str,
+    repo: str,
+    summary: dict,
+    stats: dict,
+    vitals: dict,
+    nodes: list[dict],
+    edges: list[dict],
+    compass: list[dict],
+) -> dict:
+    """Shareable repo fingerprint — built for social posts and team Slack."""
+    health = vitals["health_score"]
+    m = vitals["metrics"]
+    god = vitals.get("god_files") or []
+    top_god = god[0] if god else None
+    parseable_n = max(stats["total_files"] - stats.get("role_counts", {}).get("config", 0), 1)
+
+    scores = {
+        "gravity": m["hub_concentration_pct"],
+        "islands": m["orphan_ratio_pct"],
+        "tangle": min(m["coupling_index"] * 12, 100),
+        "cycles": min(m["mutual_import_pairs"] * 15, 100),
+    }
+    dominant = max(scores, key=scores.get)
+
+    personalities = {
+        "gravity": {
+            "type": "Gravity Well",
+            "emoji": "🕳️",
+            "one_liner": "One file move and half the repo shivers.",
+        },
+        "islands": {
+            "type": "Island Archipelago",
+            "emoji": "🏝️",
+            "one_liner": "Disconnected files everywhere — delete or wire before they fossilize.",
+        },
+        "tangle": {
+            "type": "Spaghetti Junction",
+            "emoji": "🍝",
+            "one_liner": "Everything imports everything. Refactors are contact sports.",
+        },
+        "cycles": {
+            "type": "Ouroboros",
+            "emoji": "🐍",
+            "one_liner": "Files eat each other in circles. Extract a shared layer.",
+        },
+    }
+    if health >= 78:
+        personality = {"type": "Fortress", "emoji": "🏰", "one_liner": "Structure absorbs change. Ship with confidence."}
+    else:
+        personality = personalities[dominant]
+
+    if top_god:
+        pct = round(top_god["indegree"] / max(parseable_n, 1) * 100)
+        viral_headline = (
+            f"{top_god['name']} is imported by {top_god['indegree']} files "
+            f"({pct}% of the graph)"
+        )
+    elif health < 45:
+        viral_headline = f"Structural health {health}/100 — {vitals['health_grade']} territory"
+    else:
+        viral_headline = (
+            f"{stats['total_files']} files · {stats['total_edges']} import edges · "
+            f"health {health}/100"
+        )
+
+    project = summary.get("project_name") or repo
+    share_lines = [
+        f"{personality['emoji']} {owner}/{repo} — {personality['type']}",
+        f"Health {health}/100 ({vitals['health_grade']}) · {viral_headline}",
+    ]
+    if top_god:
+        share_lines.append(f"God file: {top_god['path']} (↑{top_god['indegree']})")
+    share_lines.append(f"Mapped with Repogami → /dna?repo={owner}/{repo}")
+
+    share_tweet = "\n".join(share_lines[:4])
+
+    share_card = {
+        "headline": viral_headline,
+        "personality": personality["type"],
+        "emoji": personality["emoji"],
+        "health": health,
+        "grade": vitals["health_grade"],
+        "color": vitals["health_color"],
+        "stats_line": (
+            f"{stats['total_files']} files · {stats['hub_count']} hubs · "
+            f"{stats['orphan_count']} orphans · {m['mutual_import_pairs']} mutual imports"
+        ),
+        "compass_preview": [c["name"] for c in compass[:3]],
+    }
+
+    return {
+        "personality": personality,
+        "viral_headline": viral_headline,
+        "share_tweet": share_tweet,
+        "share_card": share_card,
+        "share_url_path": f"/dna?repo={owner}/{repo}",
+        "danger_file": top_god,
+    }
+
+
+def compute_touch_index(node_id: str, edges: list[dict], parseable_count: int, depth: int = 6) -> dict:
+    """How much of the codebase ripples if this file changes (reverse import BFS)."""
+    affected: set[str] = set()
+    frontier = {node_id}
+    for _ in range(depth):
+        nxt: set[str] = set()
+        for e in edges:
+            if e["target"] in frontier and e["source"] not in affected and e["source"] != node_id:
+                nxt.add(e["source"])
+                affected.add(e["source"])
+        frontier = nxt
+        if not frontier:
+            break
+
+    pct = round(len(affected) / max(parseable_count, 1) * 100, 1)
+    if pct >= 35:
+        label, color = "Nuclear", "#ef4444"
+    elif pct >= 18:
+        label, color = "High", "#f97316"
+    elif pct >= 8:
+        label, color = "Moderate", "#eab308"
+    else:
+        label, color = "Contained", "#22c55e"
+
+    return {
+        "affected_count": len(affected),
+        "affected_pct": pct,
+        "risk_label": label,
+        "risk_color": color,
+        "verdict": (
+            f"Touching this file can ripple into {len(affected)} others ({pct}% of the graph)."
+        ),
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -939,10 +1366,19 @@ Return ONLY a valid JSON object (no markdown fences, no extra text):
         "role_counts": dict(role_counts),
     }
 
+    vitals = compute_codebase_vitals(nodes, edges, stats)
+    contributor_compass = compute_contributor_compass(nodes, edges)
+    repo_dna = compute_repo_dna(
+        owner, repo, summary, stats, vitals, nodes, edges, contributor_compass,
+    )
+
     result = {
         "graph": {"nodes": nodes, "links": edges},
         "summary": summary,
         "stats": stats,
+        "vitals": vitals,
+        "contributor_compass": contributor_compass,
+        "repo_dna": repo_dna,
         "meta": {
             "owner": owner,
             "repo": repo,
@@ -1181,6 +1617,33 @@ async def blast_share(req: BlastShareRequest):
     result["depth"]     = req.depth
 
     return result
+
+
+@app.post("/repo-dna-share")
+async def repo_dna_share(req: RepoDnaShareRequest):
+    """Compact DNA card payload for shareable /dna pages (uses analyze cache)."""
+    owner, repo = parse_github_url(req.repo_url)
+    cache_key = f"{owner}/{repo}"
+
+    cached = _analyze_cache.get(cache_key)
+    if not cached:
+        raise HTTPException(
+            400,
+            "Repo not yet analyzed. Call /analyze first, then /repo-dna-share.",
+        )
+
+    return {
+        "repo": f"{owner}/{repo}",
+        "repo_url": f"https://github.com/{owner}/{repo}",
+        "project_name": cached["summary"].get("project_name", repo),
+        "tagline": cached["summary"].get("tagline", ""),
+        "summary": cached["summary"],
+        "stats": cached["stats"],
+        "vitals": cached["vitals"],
+        "repo_dna": cached["repo_dna"],
+        "contributor_compass": cached["contributor_compass"],
+        "meta": cached["meta"],
+    }
 
 
 @app.post("/generate-readme")

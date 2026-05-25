@@ -1,7 +1,8 @@
 import React from 'react';
 import { T } from '../../theme';
-import { AnalyzeResult } from '../../types';
+import { AnalyzeResult, GNode } from '../../types';
 import SidebarReadme from './SidebarReadme';
+import VitalsPanel from './VitalsPanel';
 
 interface SummaryPanelProps {
   data: AnalyzeResult | null;
@@ -10,10 +11,14 @@ interface SummaryPanelProps {
   readme: string;
   generateArchitecture: () => void;
   archLoading: boolean;
+  onInspectIds?: (ids: string[]) => void;
+  onInspectNode?: (node: GNode) => void;
+  analyzedUrl?: string;
 }
 
 export default function SummaryPanel({
   data, generateReadme, readmeLoading, readme, generateArchitecture, archLoading,
+  onInspectIds, onInspectNode, analyzedUrl,
 }: SummaryPanelProps) {
   if (!data) return null;
   const { summary, stats, meta } = data;
@@ -54,6 +59,8 @@ export default function SummaryPanel({
           <StatCard label="Edges" value={stats.total_edges} />
           <StatCard label="Orphans" value={stats.orphan_count} />
         </div>
+
+        <VitalsPanel data={data} analyzedUrl={analyzedUrl} onInspectIds={onInspectIds} onInspectNode={onInspectNode} />
 
         {/* Premium Stack Pills */}
         {summary.tech_stack?.length > 0 && (

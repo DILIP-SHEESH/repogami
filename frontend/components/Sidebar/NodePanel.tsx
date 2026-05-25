@@ -4,6 +4,7 @@ import React from 'react';
 import { T, ROLES } from '../../theme';
 import { GNode, AnalyzeResult } from '../../types';
 import BlastRadiusPanel from '../BlastRadiusPanel';
+import { computeTouchIndex } from '../../lib/touchIndex';
 
 interface NodePanelProps {
   selectedNode: GNode | null;
@@ -108,11 +109,49 @@ export default function NodePanel({
   // ── Node selected ────────────────────────────────────────────────────────────
   const roleDef = ROLES[selectedNode.role] ?? ROLES.default;
 
+  const parseableCount = data?.graph.nodes.filter(n => !n.is_config).length ?? 1;
+  const touchIndex = data
+    ? computeTouchIndex(selectedNode.id, data.graph.links, parseableCount)
+    : null;
+
   return (
     <div style={{
       flex: 1, padding: '24px 20px', overflowY: 'auto',
       display: 'flex', flexDirection: 'column', gap: 0,
     }}>
+
+      {touchIndex && (
+        <div style={{
+          padding: '14px 16px', borderRadius: 14, marginBottom: 20,
+          background: `${touchIndex.risk_color}10`,
+          border: `1px solid ${touchIndex.risk_color}40`,
+        }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8,
+          }}>
+            <span style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', color: touchIndex.risk_color,
+            }}>
+              TOUCH INDEX
+            </span>
+            <span style={{
+              fontSize: 22, fontWeight: 800, color: touchIndex.risk_color, letterSpacing: '-0.03em',
+            }}>
+              {touchIndex.affected_pct}%
+            </span>
+          </div>
+          <p style={{ fontSize: 12, color: T.textMuted, margin: 0, lineHeight: 1.55 }}>
+            {touchIndex.verdict}
+          </p>
+          <span style={{
+            display: 'inline-block', marginTop: 10, fontSize: 10, fontWeight: 700,
+            padding: '4px 10px', borderRadius: 100,
+            background: `${touchIndex.risk_color}22`, color: touchIndex.risk_color,
+          }}>
+            {touchIndex.risk_label} blast potential
+          </span>
+        </div>
+      )}
 
       {/* Role badge */}
       <div style={{

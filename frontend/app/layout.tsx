@@ -13,8 +13,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RepoGami",
-  description: "A tool to visualize and analyze GitHub repositories using graph theory.",
+  title: "Repogami — See what breaks before you ship",
+  description:
+    "Paste any public GitHub repo. Get a 3D import graph, Touch Index, Repo DNA card, blast radius, and onboarding compass — free, no login.",
+  openGraph: {
+    title: "Repogami",
+    description:
+      "Structural intelligence for GitHub repos — gravity wells, health score, shareable DNA.",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Repogami",
+    description:
+      "Paste a GitHub URL. See what breaks before you ship.",
+  },
 };
 
 export default function RootLayout({

@@ -25,9 +25,80 @@ export interface Stats {
   role_counts: Record<string, number>;
 }
 
+export interface CodebaseVitals {
+  health_score: number;
+  health_grade: string;
+  health_color: string;
+  tagline: string;
+  metrics: {
+    coupling_index: number;
+    orphan_ratio_pct: number;
+    hub_concentration_pct: number;
+    mutual_import_pairs: number;
+    layer_diversity: number;
+    dominant_layer: string;
+  };
+  layers: Record<string, number>;
+  smell_radar: {
+    id: string;
+    severity: 'low' | 'medium' | 'high';
+    title: string;
+    detail: string;
+    metric: number;
+    inspect_ids: string[];
+  }[];
+  refactor_playbook: {
+    priority: number;
+    action: string;
+    why: string;
+    effort: string;
+    impact: 'low' | 'medium' | 'high' | 'critical';
+    target_id?: string;
+  }[];
+  god_files: { id: string; name: string; indegree: number; path: string }[];
+}
+
+export interface CompassStep {
+  step: number;
+  path: string;
+  name: string;
+  role: Role;
+  reason: string;
+  indegree: number;
+}
+
+export interface RepoDna {
+  personality: { type: string; emoji: string; one_liner: string };
+  viral_headline: string;
+  share_tweet: string;
+  share_card: {
+    headline: string;
+    personality: string;
+    emoji: string;
+    health: number;
+    grade: string;
+    color: string;
+    stats_line: string;
+    compass_preview: string[];
+  };
+  share_url_path: string;
+  danger_file?: { id: string; name: string; indegree: number; path: string } | null;
+}
+
+export interface TouchIndex {
+  affected_count: number;
+  affected_pct: number;
+  risk_label: string;
+  risk_color: string;
+  verdict: string;
+}
+
 export interface AnalyzeResult {
   graph: { nodes: GNode[]; links: GLink[] };
   summary: Summary; stats: Stats;
+  vitals?: CodebaseVitals;
+  contributor_compass?: CompassStep[];
+  repo_dna?: RepoDna;
   meta: { owner: string; repo: string; url: string; truncated: boolean; files_fetched_for_deps: number; branch: string; };
 }
 

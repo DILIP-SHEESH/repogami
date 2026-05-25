@@ -31,6 +31,7 @@ export type SidebarProps = {
   analyzedUrl: string;
   apiBase: string;
   onHighlight: (ids: Set<string>) => void;
+  onInspectIds?: (ids: string[]) => void;
 };
 
 const TABS = [
@@ -46,6 +47,7 @@ export default function SidebarShell({
   analyzedUrl,
   apiBase,
   onHighlight,
+  onInspectIds,
   ...panelProps
 }: SidebarProps) {
   return (
@@ -87,7 +89,14 @@ export default function SidebarShell({
 
       {/* Panel content */}
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-        {sidebarTab === 'summary' && <SummaryPanel {...panelProps} />}
+        {sidebarTab === 'summary' && (
+          <SummaryPanel
+            {...panelProps}
+            analyzedUrl={analyzedUrl}
+            onInspectIds={onInspectIds}
+            onInspectNode={panelProps.handleNodeClick}
+          />
+        )}
         {sidebarTab === 'node'    && (
           <NodePanel
             {...panelProps}

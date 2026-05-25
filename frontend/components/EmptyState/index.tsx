@@ -2,15 +2,21 @@ import React, { useCallback } from 'react';
 import { T } from '../../theme';
 
 const features = [
-  { icon: 'ti-topology-star-3', title: '3D Dependency Graph',  desc: 'Every file. Every import. Force-directed and live.' },
-  { icon: 'ti-ripple',          title: 'Blast Radius',         desc: 'Know exactly what breaks before you touch anything.' },
-  { icon: 'ti-sitemap',         title: 'Architecture Diagram', desc: 'Layered system map, auto-generated from structure.' },
-  { icon: 'ti-sparkles',        title: 'AI Code Intelligence', desc: 'Ask questions. Get answers with full repo context.' },
+  { icon: 'ti-dna-2',              title: 'Repo DNA Card',       desc: 'Personality + viral headline + copy-paste tweet. Built to post.' },
+  { icon: 'ti-hand-stop',          title: 'Touch Index',         desc: 'Click any file → see what % of the graph ripples if you edit it.' },
+  { icon: 'ti-compass',            title: 'Contributor Compass', desc: 'Ordered reading path for cold onboarding — entry to gravity well.' },
+  { icon: 'ti-ripple',             title: 'Blast Radius',        desc: 'Shareable /blast links with risk rings for Slack and PR review.' },
+  { icon: 'ti-heart-rate-monitor', title: 'Codebase Vitals',     desc: '0–100 health from import physics. Smell radar. Refactor playbook.' },
+  { icon: 'ti-topology-star-3',    title: '3D Dependency Graph', desc: 'See hub gravity wells in space before you ship the PR.' },
 ];
 
 const EXAMPLE_REPOS = ['vercel/next.js', 'vitejs/vite', 'shadcn-ui/ui', 'trpc/trpc'];
 
-export default function EmptyState() {
+interface EmptyStateProps {
+  onTryRepo?: (repo: string) => void;
+}
+
+export default function EmptyState({ onTryRepo }: EmptyStateProps) {
   return (
     <div style={{
       position: 'absolute', inset: 0,
@@ -54,18 +60,18 @@ export default function EmptyState() {
             marginBottom: 24,
             fontFamily: T.sans,
           }}>
-            Understand any <br className="hide-mobile" />
-            <span style={{ color: T.textDim, display: 'inline-block' }}>codebase.</span>
+            See what breaks <br className="hide-mobile" />
+            <span style={{ color: T.textDim, display: 'inline-block' }}>before you ship.</span>
           </h1>
 
           {/* Hero Subheadline */}
           <p className="rg-animate-fade-up delay-2" style={{
             color: T.textMuted, fontSize: 'clamp(16px, 2.5vw, 20px)', lineHeight: 1.6,
-            maxWidth: 580, margin: '0 auto 48px',
+            maxWidth: 620, margin: '0 auto 48px',
             fontWeight: 400, letterSpacing: '-0.01em',
           }}>
-            Paste a GitHub URL above to generate a live 3D dependency graph,
-            layered architecture diagram, and AI-powered summary instantly.
+            Paste a GitHub URL. Get a 3D import graph, Touch Index per file, Repo DNA you can post on X,
+            and a Contributor Compass for onboarding — in under a minute. No login.
           </p>
 
           {/* Example Repos */}
@@ -76,7 +82,7 @@ export default function EmptyState() {
             <span style={{ fontSize: 13, color: T.textDim, fontWeight: 500, marginRight: 8, letterSpacing: '-0.01em' }}>
               Try an example:
             </span>
-            {EXAMPLE_REPOS.map(r => <RepoChip key={r} name={r} />)}
+            {EXAMPLE_REPOS.map(r => <RepoChip key={r} name={r} onTry={onTryRepo} />)}
           </div>
 
           {/* Bento Feature Grid (4 in a row on desktop) */}
@@ -161,16 +167,20 @@ function FeatureCard({ icon, title, desc }: { icon: string; title: string; desc:
   );
 }
 
-function RepoChip({ name }: { name: string }) {
+function RepoChip({ name, onTry }: { name: string; onTry?: (repo: string) => void }) {
   const fill = useCallback(() => {
+    if (onTry) {
+      onTry(name);
+      return;
+    }
     const input = document.querySelector('.rg-url-input') as HTMLInputElement;
     if (input) {
       input.value = name;
       input.dispatchEvent(new Event('input', { bubbles: true }));
       input.focus();
     }
-  }, [name]);
-  
+  }, [name, onTry]);
+
   return (
     <button
       onClick={fill} className="rg-chip-hover"

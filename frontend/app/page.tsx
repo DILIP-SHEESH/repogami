@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { T } from '../theme';
 import { AnalyzeResult, GNode, ArchResult } from '../types';
 
@@ -47,10 +47,14 @@ export default function RepoGami() {
 
   const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+  const deepLinkRan = useRef(false);
+
   // ── Analyze ─────────────────────────────────────────────────────────────────
-  const analyze = useCallback(async (e?: React.FormEvent) => {
+  const analyze = useCallback(async (e?: React.FormEvent, urlOverride?: string) => {
     if (e) e.preventDefault();
-    if (!url.trim()) return;
+    const target = (urlOverride ?? url).trim();
+    if (!target) return;
+    if (urlOverride) setUrl(target);
 
     setLoading(true); setError(''); setData(null); setSelectedNode(null);
     setHighlightNodes(new Set()); setHighlightLinks(new Set());
@@ -76,21 +80,44 @@ export default function RepoGami() {
     try {
       const res = await fetch(`${API}/analyze`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repo_url: url }),
+        body: JSON.stringify({ repo_url: target }),
       });
       clearInterval(t); setLoadPct(100);
-      if (!res.ok) throw new Error('Analysis failed.');
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        const detail = (errBody as { detail?: string }).detail;
+        throw new Error(detail || 'Analysis failed.');
+      }
       const result = await res.json();
       setData(result);
-      setAnalyzedUrl(url);
+      setAnalyzedUrl(target);
       setSidebarTab('summary');
-    } catch {
+      if (typeof window !== 'undefined') {
+        const u = new URL(window.location.href);
+        u.searchParams.set('url', target);
+        window.history.replaceState(null, '', u.pathname + u.search);
+      }
+    } catch (err) {
       clearInterval(t);
-      setError('Could not analyze repository. Check the URL or verify the backend is running.');
+      const msg = err instanceof Error ? err.message : '';
+      setError(
+        msg && msg !== 'Analysis failed.'
+          ? msg
+          : 'Could not analyze repository. Check the URL, make sure the repo is public, and verify the backend is running.',
+      );
     } finally {
       setLoading(false); setLoadStage(''); setLoadPct(0);
     }
   }, [url, API]);
+
+  // Deep link: /?url=owner/repo (from DNA, blast, or your social post)
+  useEffect(() => {
+    if (deepLinkRan.current || typeof window === 'undefined') return;
+    const q = new URLSearchParams(window.location.search).get('url')?.trim();
+    if (!q) return;
+    deepLinkRan.current = true;
+    analyze(undefined, q);
+  }, [analyze]);
 
   // ── Node click ──────────────────────────────────────────────────────────────
   const handleNodeClick = useCallback((node: GNode) => {
@@ -145,6 +172,35 @@ export default function RepoGami() {
     } catch { setAiAnswer('Network error connecting to AI endpoint.'); }
     finally { setAiLoading(false); }
   }, [selectedNode, aiQuestion, data, analyzedUrl, API]);
+
+  // ── Highlight smell / vitals targets on graph ─────────────────────────────────
+  const handleInspectIds = useCallback((ids: string[]) => {
+    if (!data || ids.length === 0) return;
+    const hn = new Set<string>(ids);
+    const hl = new Set<string>();
+    data.graph.links.forEach(l => {
+      const s  = typeof l.source === 'object' ? l.source.id : l.source;
+      const t2 = typeof l.target === 'object' ? l.target.id : l.target;
+      if (hn.has(s) || hn.has(t2)) {
+        hn.add(s); hn.add(t2);
+        hl.add(`${s}→${t2}`);
+      }
+    });
+    setHighlightNodes(hn);
+    setHighlightLinks(hl);
+    setSidebarTab('node');
+    const first = data.graph.nodes.find(n => ids.includes(n.id));
+    if (first) {
+      setSelectedNode(first);
+      if (graphRef.current && first.x !== undefined) {
+        graphRef.current.cameraPosition(
+          { x: first.x, y: first.y, z: (first.z || 0) + 180 },
+          { x: first.x, y: first.y, z: first.z || 0 }, 900
+        );
+      }
+    }
+    if (window.innerWidth <= 992) setMobileSidebarOpen(true);
+  }, [data]);
 
   // ── Blast radius ─────────────────────────────────────────────────────────────
   const runBlast = useCallback(() => {
@@ -259,6 +315,23 @@ export default function RepoGami() {
                 <span style={{ color: T.text }}>{data.stats.total_edges}</span> edges
               </div>
 
+              {data.repo_dna && (
+                <a
+                  href={`/dna?repo=${encodeURIComponent(`${data.meta.owner}/${data.meta.repo}`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open shareable Repo DNA card"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+                    borderRadius: 100, background: T.bgSurface, border: `1px solid ${T.border}`,
+                    textDecoration: 'none', color: T.text, fontSize: 12, fontWeight: 600,
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>{data.repo_dna.personality.emoji}</span>
+                  <span className="hide-mobile">DNA</span>
+                </a>
+              )}
+
               <button
                 onClick={() => setShowTree(v => !v)}
                 className="rg-mobile-toggle"
@@ -319,7 +392,9 @@ export default function RepoGami() {
 
         {/* Graph canvas */}
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: T.bg }}>
-          {!data && !loading && <EmptyState />}
+          {!data && !loading && (
+            <EmptyState onTryRepo={(repo) => analyze(undefined, repo)} />
+          )}
           {loading && <LoadingScreen stage={loadStage} pct={loadPct} />}
           {data && !loading && (
             <>
@@ -345,6 +420,22 @@ export default function RepoGami() {
                 <span>
                   <span style={{ fontWeight: 600, color: T.amber }}>{data.stats.orphan_count}</span> orphans
                 </span>
+                {data.vitals && (
+                  <>
+                    <span className="rg-graph-strip-sep hide-mobile" />
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{
+                        width: 8, height: 8, borderRadius: '50%',
+                        background: data.vitals.health_color,
+                        boxShadow: `0 0 8px ${data.vitals.health_color}66`,
+                      }} />
+                      <span style={{ fontWeight: 700, color: data.vitals.health_color }}>
+                        {data.vitals.health_score}
+                      </span>
+                      <span style={{ color: T.textMuted, fontWeight: 500 }}>{data.vitals.health_grade}</span>
+                    </span>
+                  </>
+                )}
                 {selectedNode && (
                   <>
                     <span className="rg-graph-strip-sep hide-mobile" />
@@ -379,6 +470,7 @@ export default function RepoGami() {
               analyzedUrl={analyzedUrl}
               apiBase={API}
               onHighlight={(ids: Set<string>) => setHighlightNodes(ids)}
+              onInspectIds={handleInspectIds}
             />
           </div>
         )}
