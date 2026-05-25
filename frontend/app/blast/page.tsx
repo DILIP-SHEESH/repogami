@@ -1,21 +1,6 @@
 'use client';
 
-/**
- * app/blast/page.tsx
- *
- * Shareable, standalone blast radius page.
- * URL format: /blast?repo=owner/repo&file=path/to/file.ts&score=72&label=High
- *
- * When loaded:
- *   1. Reads query params for instant preview (score + label shown immediately)
- *   2. Calls /analyze then /blast-radius for full data
- *   3. Renders full ring visualization
- *
- * This page has zero auth. Works for any public repo.
- * It's designed to be shared in Slack, PR comments, tweets.
- */
-
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 // ─── Minimal inline styles (no theme import needed — standalone page) ─────────
@@ -90,9 +75,9 @@ function RiskArc({ score, color, label }: { score: number; color: string; label:
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Inner component that uses useSearchParams ─────────────────────────────────
 
-export default function BlastPage() {
+function BlastPageInner() {
   const params  = useSearchParams();
   const repo    = params.get('repo') ?? '';
   const file    = params.get('file') ?? '';
@@ -384,5 +369,15 @@ export default function BlastPage() {
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
     </div>
+  );
+}
+
+// ─── Page export with Suspense boundary ──────────────────────────────────────
+
+export default function BlastPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: S.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: S.text }}>Loading...</div>}>
+      <BlastPageInner />
+    </Suspense>
   );
 }
