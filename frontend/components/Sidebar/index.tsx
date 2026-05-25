@@ -27,6 +27,10 @@ export type SidebarProps = {
   arch: ArchResult | null;
   generateArchitecture: () => void;
   archLoading: boolean;
+  // ── New props for blast radius ──
+  analyzedUrl: string;
+  apiBase: string;
+  onHighlight: (ids: Set<string>) => void;
 };
 
 const TABS = [
@@ -36,13 +40,24 @@ const TABS = [
   { id: 'arch',    label: 'Diagram',  icon: 'ti-sitemap'          },
 ] as const;
 
-export default function SidebarShell({ sidebarTab, setSidebarTab, ...panelProps }: SidebarProps) {
+export default function SidebarShell({
+  sidebarTab,
+  setSidebarTab,
+  analyzedUrl,
+  apiBase,
+  onHighlight,
+  ...panelProps
+}: SidebarProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', background: T.bgElevated }}>
-      {/* Premium Tab Bar */}
-      <div style={{ 
-        display: 'flex', padding: '8px', gap: '4px', borderBottom: `1px solid ${T.border}`, 
-        background: T.bgSurface, zIndex: 10 
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: '100%',
+      width: '100%', background: T.bgElevated,
+    }}>
+      {/* Tab bar */}
+      <div style={{
+        display: 'flex', padding: '8px', gap: '4px',
+        borderBottom: `1px solid ${T.border}`,
+        background: T.bgSurface, zIndex: 10,
       }}>
         {TABS.map(tab => {
           const isActive = sidebarTab === tab.id;
@@ -54,13 +69,14 @@ export default function SidebarShell({ sidebarTab, setSidebarTab, ...panelProps 
                 flex: 1, height: 36, border: 'none', borderRadius: 8,
                 background: isActive ? T.bgActive : 'transparent',
                 color: isActive ? T.text : T.textDim,
-                cursor: 'pointer', fontFamily: T.sans, fontSize: 12, fontWeight: isActive ? 600 : 500,
+                cursor: 'pointer', fontFamily: T.sans, fontSize: 12,
+                fontWeight: isActive ? 600 : 500,
                 transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                boxShadow: isActive ? '0 2px 4px rgba(0,0,0,0.02)' : 'none'
+                boxShadow: isActive ? '0 2px 4px rgba(0,0,0,0.02)' : 'none',
               }}
-              onMouseEnter={e => { if(!isActive) e.currentTarget.style.background = T.bgHover; }}
-              onMouseLeave={e => { if(!isActive) e.currentTarget.style.background = 'transparent'; }}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = T.bgHover; }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
             >
               <i className={`ti ${tab.icon}`} style={{ fontSize: 14 }} />
               <span className="hide-mobile">{tab.label}</span>
@@ -72,9 +88,16 @@ export default function SidebarShell({ sidebarTab, setSidebarTab, ...panelProps 
       {/* Panel content */}
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         {sidebarTab === 'summary' && <SummaryPanel {...panelProps} />}
-        {sidebarTab === 'node'    && <NodePanel    {...panelProps} />}
-        {sidebarTab === 'ai'      && <AskPanel     {...panelProps} />}
-        {sidebarTab === 'arch'    && <ArchPanel    {...panelProps} />}
+        {sidebarTab === 'node'    && (
+          <NodePanel
+            {...panelProps}
+            analyzedUrl={analyzedUrl}
+            apiBase={apiBase}
+            onHighlight={onHighlight}
+          />
+        )}
+        {sidebarTab === 'ai'      && <AskPanel  {...panelProps} />}
+        {sidebarTab === 'arch'    && <ArchPanel {...panelProps} />}
       </div>
     </div>
   );

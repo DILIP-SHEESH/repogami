@@ -158,11 +158,17 @@ class AskRequest(BaseModel):
     repo_url: str
     file_path: str
     question: str
-    subgraph: Optional[list] = []
+    subgraph: Optional[list] = None
 
 class BlastRequest(BaseModel):
     edges: list
     node_id: str
+    depth: Optional[int] = 5
+    nodes: Optional[list] = None
+
+class BlastShareRequest(BaseModel):
+    repo_url: str
+    file_path: str
     depth: Optional[int] = 5
 
 class ReadmeRequest(BaseModel):
@@ -179,7 +185,7 @@ class ReadmeRequest(BaseModel):
     total_edges: int
     languages: dict
     file_tree_summary: str
-    top_hubs: Optional[list] = []
+    top_hubs: Optional[list] = None
     orphan_count: Optional[int] = 0
     complexity: Optional[str] = "medium"
 
@@ -192,11 +198,11 @@ class ArchitectureRequest(BaseModel):
     key_modules: list[str]
     file_tree_summary: str
     languages: dict
-    entry_points: Optional[list[str]] = []
+    entry_points: Optional[list[str]] = None
     total_files: Optional[int] = 0
-    top_hubs: Optional[list] = []
+    top_hubs: Optional[list] = None
     orphan_count: Optional[int] = 0
-    role_counts: Optional[dict] = {}
+    role_counts: Optional[dict] = None
     total_edges: Optional[int] = 0
     force_refresh: Optional[bool] = False
 
@@ -584,7 +590,6 @@ async def _generate_arch_graph(
     tree_lines   = file_tree_summary.strip().split("\n")
     tree_trimmed = "\n".join(tree_lines[:80])
 
-    # Pass 1: plain-English explanation (fast model)
     explanation_raw = await groq(
         system=ARCH_EXPLAIN_SYSTEM,
         user=f"""Repository: {owner}/{repo}
@@ -613,7 +618,6 @@ Most-imported files:
 
     explanation = explanation_raw.strip()
 
-    # Pass 2: structured JSON graph (quality model)
     graph_raw = await groq(
         system=ARCH_GRAPH_SYSTEM,
         user=f"""<explanation>
@@ -662,7 +666,7 @@ Most-imported files:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# README system prompt — developer-loved format
+# README system prompt
 # ─────────────────────────────────────────────────────────────────────────────
 
 README_SYSTEM = """You are a senior open-source developer writing a world-class README.md.
@@ -963,8 +967,9 @@ async def ask(req: AskRequest):
         )
     file_content = r.text[:4000] if r.status_code == 200 else "[Content unavailable]"
 
-    imports     = [e["target"] for e in req.subgraph if e.get("source") == req.file_path]
-    imported_by = [e["source"] for e in req.subgraph if e.get("target") == req.file_path]
+    subgraph = req.subgraph or []
+    imports     = [e["target"] for e in subgraph if e.get("source") == req.file_path]
+    imported_by = [e["source"] for e in subgraph if e.get("target") == req.file_path]
 
     answer = await groq(
         system="""You are an expert software engineer doing codebase analysis.
@@ -979,6 +984,7 @@ Imports (outgoing deps): {imports or ['none']}
 Imported by (incoming deps): {imported_by or ['none']}
 
 File content:
+{file_content}
 
 Question: {req.question}""",
         max_tokens=700,
@@ -997,48 +1003,203 @@ Question: {req.question}""",
 
 @app.post("/blast-radius")
 async def blast_radius_route(req: BlastRequest):
-    affected_by_depth = []
+    """
+    Deep cascade blast radius with per-ring breakdown and risk score.
+
+    Risk score (0-100) is computed from:
+      - Blast width  (how many files affected)          → 35 pts max
+      - Cascade depth (how deep the ripple goes)        → 20 pts max
+      - Hub exposure  (affected hubs = critical files)  → 25 pts max
+      - Test coverage (test files in blast vs total)    → 10 pts max
+      - Entry exposure (entry points in blast radius)   → 10 pts max
+    """
+
+    # Safely resolve depth — never None
+    depth = req.depth if req.depth is not None else 5
+
+    # Build lookup map from node list
+    node_map: dict[str, dict] = {}
+    if req.nodes:
+        for n in req.nodes:
+            node_map[n["id"]] = n
+
+    total_files = len(node_map) if node_map else max(len(req.edges), 1)
+
+    # BFS cascade — collect rings
+    rings: list[dict] = []
     frontier = {req.node_id}
     all_affected: set[str] = set()
 
-    for depth in range(req.depth):
+    for depth_i in range(depth):
         next_frontier: set[str] = set()
+
         for e in req.edges:
-            src, tgt = e.get("source", ""), e.get("target", "")
+            src = e.get("source", "")
+            tgt = e.get("target", "")
+            # source imports target
+            # if target is in frontier → source is at risk
             if tgt in frontier and src not in all_affected and src != req.node_id:
                 next_frontier.add(src)
                 all_affected.add(src)
+
         if not next_frontier:
             break
-        affected_by_depth.append({"depth": depth + 1, "files": list(next_frontier)})
+
+        ring_files = []
+        for fid in next_frontier:
+            node = node_map.get(fid, {})
+            ring_files.append({
+                "id":       fid,
+                "name":     node.get("name", fid.split("/")[-1]),
+                "path":     fid,
+                "role":     node.get("role", "unknown"),
+                "indegree": node.get("indegree", 0),
+                "language": node.get("language", "other"),
+                "is_hub":   node.get("is_hub", False),
+                "is_entry": node.get("is_entry", False),
+                "is_test":  "test" in fid.lower() or "spec" in fid.lower(),
+            })
+
+        rings.append({
+            "depth":      depth_i + 1,
+            "files":      ring_files,
+            "file_count": len(ring_files),
+        })
         frontier = next_frontier
 
+    # Risk scoring
+    affected_count = len(all_affected)
+    actual_depth   = len(rings)
+    hub_files      = [f for r in rings for f in r["files"] if f["is_hub"]]
+    entry_files    = [f for r in rings for f in r["files"] if f["is_entry"]]
+    test_files     = [f for r in rings for f in r["files"] if f["is_test"]]
+
+    # Width: 0 files = 0pts, 5% of repo = 35pts
+    width_ratio = min(affected_count / max(total_files, 1), 0.05) / 0.05
+    width_score = round(width_ratio * 35)
+
+    # Depth: 1 ring = 4pts, 5+ rings = 20pts
+    depth_score = min(actual_depth * 4, 20)
+
+    # Hubs: each hub = 5pts, max 25
+    hub_score = min(len(hub_files) * 5, 25)
+
+    # Tests: absence of tests = risky
+    if affected_count == 0:
+        test_score = 0
+    else:
+        test_ratio = len(test_files) / max(affected_count, 1)
+        test_score = round((1 - min(test_ratio * 2, 1)) * 10)
+
+    # Entry points: each = 5pts, max 10
+    entry_score = min(len(entry_files) * 5, 10)
+
+    risk_score = max(0, min(width_score + depth_score + hub_score + test_score + entry_score, 100))
+
+    if risk_score >= 75:
+        risk_label = "Critical"
+        risk_color = "#ef4444"
+    elif risk_score >= 50:
+        risk_label = "High"
+        risk_color = "#f97316"
+    elif risk_score >= 25:
+        risk_label = "Medium"
+        risk_color = "#eab308"
+    else:
+        risk_label = "Low"
+        risk_color = "#22c55e"
+
+    origin_node = node_map.get(req.node_id, {})
+    origin_name = origin_node.get("name", req.node_id.split("/")[-1])
+
     return {
-        "node": req.node_id,
-        "total_affected": len(all_affected),
+        "node":           req.node_id,
+        "node_name":      origin_name,
+        "node_role":      origin_node.get("role", "unknown"),
+        "total_affected": affected_count,
+        "actual_depth":   actual_depth,
         "affected_files": list(all_affected),
-        "by_depth": affected_by_depth,
+        "rings":          rings,
+        "risk_score":     risk_score,
+        "risk_label":     risk_label,
+        "risk_color":     risk_color,
+        "risk_breakdown": {
+            "width":  width_score,
+            "depth":  depth_score,
+            "hubs":   hub_score,
+            "tests":  test_score,
+            "entry":  entry_score,
+        },
+        "hub_files":   [f["id"] for f in hub_files],
+        "entry_files": [f["id"] for f in entry_files],
+        "test_files":  [f["id"] for f in test_files],
+        "summary": (
+            f"Changing `{origin_name}` "
+            f"affects {affected_count} file{'s' if affected_count != 1 else ''} "
+            f"across {actual_depth} layer{'s' if actual_depth != 1 else ''} — "
+            f"risk score {risk_score}/100 ({risk_label})"
+        ),
     }
+
+
+@app.post("/blast-share")
+async def blast_share(req: BlastShareRequest):
+    """
+    Self-contained blast radius for a specific file in a public repo.
+    Used to generate shareable permanent links.
+    Requires /analyze to have been called first (uses cache).
+    """
+    owner, repo = parse_github_url(req.repo_url)
+    cache_key   = f"{owner}/{repo}"
+
+    cached = _analyze_cache.get(cache_key)
+    if not cached:
+        raise HTTPException(
+            400,
+            "Repo not yet analyzed. Call /analyze first, then /blast-share."
+        )
+
+    graph  = cached["graph"]
+    nodes  = graph["nodes"]
+    edges  = graph["links"]
+
+    node_ids = {n["id"] for n in nodes}
+    if req.file_path not in node_ids:
+        raise HTTPException(404, f"File '{req.file_path}' not found in analyzed repo.")
+
+    blast_req = BlastRequest(
+        edges=edges,
+        node_id=req.file_path,
+        depth=req.depth,
+        nodes=nodes,
+    )
+    result = await blast_radius_route(blast_req)
+
+    result["repo"]      = f"{owner}/{repo}"
+    result["repo_url"]  = f"https://github.com/{owner}/{repo}"
+    result["file_path"] = req.file_path
+    result["depth"]     = req.depth
+
+    return result
 
 
 @app.post("/generate-readme")
 async def generate_readme(req: ReadmeRequest):
     owner, repo = parse_github_url(req.repo_url)
 
-    tech_str    = ", ".join(req.tech_stack) if req.tech_stack else "unknown"
-    lang_str    = "\n".join(
+    tech_str     = ", ".join(req.tech_stack) if req.tech_stack else "unknown"
+    lang_str     = "\n".join(
         f"  - {lang}: {count} files"
         for lang, count in req.languages.items() if count > 0
     )
-    modules_str = "\n".join(f"  - {m}" for m in req.key_modules) if req.key_modules else "  - (none detected)"
+    modules_str  = "\n".join(f"  - {m}" for m in req.key_modules) if req.key_modules else "  - (none detected)"
     insights_str = "\n".join(f"  - {i}" for i in req.insights) if req.insights else "  - (none)"
-    entry_str   = ", ".join(req.entry_points[:5]) if req.entry_points else "not detected"
+    entry_str    = ", ".join(req.entry_points[:5]) if req.entry_points else "not detected"
     top_hubs_str = "\n".join(
         f"  - {h['name']} (imported by {h['indegree']} files)"
         for h in (req.top_hubs or [])[:5]
     ) or "  - (none)"
 
-    # Determine primary language for badge color
     primary_lang = list(req.languages.keys())[0] if req.languages else "unknown"
     lang_badge_colors = {
         "python": "3776AB", "javascript": "F7DF1E", "typescript": "3178C6",

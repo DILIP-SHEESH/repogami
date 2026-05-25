@@ -365,16 +365,20 @@ export default function RepoGami() {
         {data && (
           <div className={`rg-sidebar-shell${mobileSidebarOpen ? ' open' : ''}`}>
             <SidebarShell
-              sidebarTab={sidebarTab}       setSidebarTab={setSidebarTab}
-              data={data}                   selectedNode={selectedNode}
+              sidebarTab={sidebarTab}           setSidebarTab={setSidebarTab}
+              data={data}                       selectedNode={selectedNode}
               handleNodeClick={handleNodeClick}
-              runBlast={runBlast}           blastLoading={blastLoading}
-              aiQuestion={aiQuestion}       setAiQuestion={setAiQuestion}
-              handleAsk={handleAsk}         aiLoading={aiLoading}
+              runBlast={runBlast}               blastLoading={blastLoading}
+              aiQuestion={aiQuestion}           setAiQuestion={setAiQuestion}
+              handleAsk={handleAsk}             aiLoading={aiLoading}
               aiAnswer={aiAnswer}
-              generateReadme={generateReadme} readmeLoading={readmeLoading} readme={readme}
-              arch={arch}                   generateArchitecture={generateArchitecture}
+              generateReadme={generateReadme}   readmeLoading={readmeLoading}
+              readme={readme}
+              arch={arch}                       generateArchitecture={generateArchitecture}
               archLoading={archLoading}
+              analyzedUrl={analyzedUrl}
+              apiBase={API}
+              onHighlight={(ids: Set<string>) => setHighlightNodes(ids)}
             />
           </div>
         )}
