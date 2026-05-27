@@ -102,10 +102,10 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ```bash
 # Terminal 1 — API
-python backend/main.py
+uvicorn main:app --reload
 
 # Terminal 2 — UI
-npm run dev --prefix frontend
+npm run dev 
 ```
 
 Open [http://localhost:3000](http://localhost:3000). Paste `owner/repo` or a full GitHub URL.
@@ -134,7 +134,7 @@ Open [http://localhost:3000](http://localhost:3000). Paste `owner/repo` or a ful
 ## Architecture
 
 <div align="center">
-  <img src="https://res.cloudinary.com/dkbvknwcu/image/upload/v1779909227/last_qufppe.gif" alt="Repogami — architecture diagram" />
+  <img src="https://res.cloudinary.com/dkbvknwcu/image/upload/v1779909227/last_qufppe.gif" alt="Repogami — Architecture diagram" />
 </div>
 
 ```
