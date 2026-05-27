@@ -134,7 +134,7 @@ Open [http://localhost:3000](http://localhost:3000). Paste `owner/repo` or a ful
 ## Architecture
 
 <div align="center">
-  <img src="https://res.cloudinary.com/dkbvknwcu/image/upload/v1779909227/last_qufppe.gif" alt="Repogami — Architecture diagram" />
+  <img src="https://github.com/DILIP-SHEESH/dump/blob/94083bb26232114ad9a90ae00e888aa3b1a3c9fa/last.gif" alt="Repogami — Architecture diagram" />
 </div>
 
 ```
