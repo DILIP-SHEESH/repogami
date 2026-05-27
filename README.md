@@ -12,9 +12,15 @@
 
 ---
 
-## Why cracked seniors actually open this
+<div align="center">
+  <img src="https://res.cloudinary.com/dkbvknwcu/image/upload/v1779908725/first_jmr4lm.gif" alt="Repogami — paste a URL, watch the graph come alive" />
+</div>
 
-You are about to edit a file in a repo you did not build. The question is not “where is it defined?” — you can grep that. The question is:
+---
+
+## Why actually open this
+
+You are about to edit a file in a repo you did not build. The question is not "where is it defined?" — you can grep that. The question is:
 
 **If I change this file, how much of the system moves with me?**
 
@@ -28,7 +34,7 @@ Repogami answers that in one session:
 | **Twitter / Slack** | **Repo DNA** — personality, health score, viral headline, one-click copy for socials |
 | **Tech lead review** | **Vitals + Smell Radar + Refactor Playbook** — deterministic, no LLM hand-waving |
 
-No indexer. No org setup. No “request demo.” Public URL → live graph.
+No indexer. No org setup. No "request demo." Public URL → live graph.
 
 ---
 
@@ -50,7 +56,7 @@ No indexer. No org setup. No “request demo.” Public URL → live graph.
 
 1. Analyze `owner/repo` (try `vercel/next.js`, `trpc/trpc`, `shadcn-ui/ui`).
 2. Open **Project** tab → **Share Pack** → copy tweet or DNA link.
-3. Post: *“🕳️ vercel/next.js — Gravity Well. Health 61/100. God file: X (↑47 deps)”*
+3. Post: *"🕳️ vercel/next.js — Gravity Well. Health 61/100. God file: X (↑47 deps)"*
 4. Teammates open `/dna?repo=owner/repo` or `/?url=owner/repo` — no account.
 
 That is the growth mechanic: **shareable structural receipts**, not another dashboard.
@@ -63,9 +69,9 @@ That is the growth mechanic: **shareable structural receipts**, not another dash
 - [ ] Open `/dna?repo=owner/repo` in an incognito window — card should load.
 - [ ] Click **Explore graph** or share `/?url=owner/repo` — should auto-analyze on landing.
 - [ ] Record a 30–45s screen capture: paste URL → graph spins up → click a hub → **Touch Index** → **Share Pack** copy.
-- [ ] Pin the DNA link or main app URL in the thread; ask *“what’s your repo’s health score?”*
+- [ ] Pin the DNA link or main app URL in the thread; ask *"what's your repo's health score?"*
 
-**Post angles that land:** roast your own repo · compare two OSS libs · “first 5 files to read” compass · hub file with highest Touch Index.
+**Post angles that land:** roast your own repo · compare two OSS libs · "first 5 files to read" compass · hub file with highest Touch Index.
 
 ---
 
@@ -126,6 +132,10 @@ Open [http://localhost:3000](http://localhost:3000). Paste `owner/repo` or a ful
 ---
 
 ## Architecture
+
+<div align="center">
+  <img src="https://res.cloudinary.com/dkbvknwcu/image/upload/v1779909227/last_qufppe.gif" alt="Repogami — architecture diagram" />
+</div>
 
 ```
 GitHub Trees API + raw file fetch
