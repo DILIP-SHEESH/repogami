@@ -1,32 +1,8 @@
 'use client';
 
-/**
- * BlastRadiusPanel.tsx
- *
- * Drop-in replacement for the blast radius UI in NodePanel.
- * Shows:
- *   1. Risk score ring (animated arc)
- *   2. Concentric rings — each depth level as a visual ring
- *   3. File chips per ring, color-coded by role
- *   4. Risk breakdown bar chart
- *   5. Share button that copies a permanent URL
- *
- * Usage in NodePanel:
- *   import BlastRadiusPanel from './BlastRadiusPanel';
- *   // Replace the blast button + results section with:
- *   <BlastRadiusPanel
- *     selectedNode={selectedNode}
- *     data={data}
- *     analyzedUrl={analyzedUrl}
- *     apiBase={API}
- *   />
- */
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { T } from '../../theme';
 import { GNode, AnalyzeResult } from '../../types';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface RingFile {
   id: string;
@@ -196,7 +172,6 @@ function BreakdownBar({
   );
 }
 
-// ─── File chip ────────────────────────────────────────────────────────────────
 
 function FileChip({ file, onClick }: { file: RingFile; onClick: () => void }) {
   const roleColor = file.is_hub ? ROLE_COLOR.hub
@@ -350,7 +325,6 @@ function ConcentricRings({
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function BlastRadiusPanel({
   selectedNode, data, analyzedUrl, apiBase, onHighlight,
@@ -397,7 +371,6 @@ export default function BlastRadiusPanel({
     }
   }, [selectedNode, data, apiBase, onHighlight]);
 
-  // ── Share ───────────────────────────────────────────────────────────────────
   const handleShare = useCallback(() => {
     if (!result || !selectedNode) return;
 
@@ -416,7 +389,6 @@ export default function BlastRadiusPanel({
     });
   }, [result, selectedNode, analyzedUrl]);
 
-  // ── File click — navigate to node on graph ──────────────────────────────────
   const handleFileClick = useCallback((fileId: string) => {
     if (!data) return;
     const node = data.graph.nodes.find(n => n.id === fileId);
@@ -427,7 +399,6 @@ export default function BlastRadiusPanel({
 
   if (!selectedNode) return null;
 
-  // ── Pre-blast state ─────────────────────────────────────────────────────────
   if (!result && !loading) {
     return (
       <div style={{ padding: '0 20px 24px' }}>
@@ -464,7 +435,6 @@ export default function BlastRadiusPanel({
     );
   }
 
-  // ── Loading ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div style={{
@@ -484,11 +454,8 @@ export default function BlastRadiusPanel({
     );
   }
 
-  // ── Results ─────────────────────────────────────────────────────────────────
   return (
     <div style={{ padding: '0 16px 32px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-      {/* ── Risk score header ─────────────────────────────────────────── */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 20,
         padding: '20px', borderRadius: 16,
@@ -534,7 +501,6 @@ export default function BlastRadiusPanel({
         </div>
       </div>
 
-      {/* ── Key callouts ─────────────────────────────────────────────── */}
       {(result!.hub_files.length > 0 || result!.entry_files.length > 0) && (
         <div style={{
           padding: '14px 16px', borderRadius: 12,
@@ -556,15 +522,12 @@ export default function BlastRadiusPanel({
         </div>
       )}
 
-      {/* ── Concentric rings ─────────────────────────────────────────── */}
       <ConcentricRings
         rings={result!.rings}
         nodeName={result!.node_name}
         riskColor={result!.risk_color}
         onFileClick={handleFileClick}
       />
-
-      {/* ── Actions row ───────────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 10 }}>
         {/* Re-run */}
         <button

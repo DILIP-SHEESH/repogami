@@ -28,7 +28,6 @@ export default function NodePanel({
   onHighlight,
 }: NodePanelProps) {
 
-  // ── Empty state — no node selected ──────────────────────────────────────────
   if (!selectedNode) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 24, paddingTop: 64 }}>
@@ -106,7 +105,6 @@ export default function NodePanel({
     );
   }
 
-  // ── Node selected ────────────────────────────────────────────────────────────
   const roleDef = ROLES[selectedNode.role] ?? ROLES.default;
 
   const parseableCount = data?.graph.nodes.filter(n => !n.is_config).length ?? 1;
@@ -153,7 +151,6 @@ export default function NodePanel({
         </div>
       )}
 
-      {/* Role badge */}
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px',
         borderRadius: 100, marginBottom: 20, background: T.bgSurface,
@@ -205,7 +202,6 @@ export default function NodePanel({
         <Metric label="Role"     value={roleDef.label.slice(0, 4)}      />
       </div>
 
-      {/* ── BLAST RADIUS — full panel ────────────────────────────────────────── */}
       <BlastRadiusPanel
         selectedNode={selectedNode}
         data={data}

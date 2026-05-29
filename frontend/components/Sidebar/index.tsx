@@ -27,7 +27,6 @@ export type SidebarProps = {
   arch: ArchResult | null;
   generateArchitecture: () => void;
   archLoading: boolean;
-  // ── New props for blast radius ──
   analyzedUrl: string;
   apiBase: string;
   onHighlight: (ids: Set<string>) => void;
@@ -86,8 +85,6 @@ export default function SidebarShell({
           );
         })}
       </div>
-
-      {/* Panel content */}
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         {sidebarTab === 'summary' && (
           <SummaryPanel

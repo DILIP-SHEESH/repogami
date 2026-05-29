@@ -13,13 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Repogami — See what breaks before you ship",
+  title: "Repogami - See what breaks before you ship",
   description:
-    "Paste any public GitHub repo. Get a 3D import graph, Touch Index, Repo DNA card, blast radius, and onboarding compass — free, no login.",
+    "Paste any public GitHub repo. Get a 3D import graph, Touch Index, Repo DNA card, blast radius, and onboarding compass : free, no login.",
   openGraph: {
     title: "Repogami",
     description:
-      "Structural intelligence for GitHub repos — gravity wells, health score, shareable DNA.",
+      "Structural intelligence for GitHub repos. Gravity wells, health score, shareable DNA.",
     type: "website",
   },
   twitter: {

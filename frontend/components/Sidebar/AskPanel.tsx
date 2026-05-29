@@ -48,7 +48,6 @@ export default function AskPanel({ selectedNode, aiQuestion, setAiQuestion, hand
         </span>
       </div>
 
-      {/* AI Textarea */}
       <textarea
         value={aiQuestion}
         onChange={e => setAiQuestion(e.target.value)}
@@ -66,7 +65,6 @@ export default function AskPanel({ selectedNode, aiQuestion, setAiQuestion, hand
         onBlur={e => { e.target.style.borderColor = T.border; e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.02)'; }}
       />
 
-      {/* Sleek Send Button */}
       <button
         onClick={() => handleAsk()}
         disabled={aiLoading || !aiQuestion.trim()}
@@ -86,7 +84,7 @@ export default function AskPanel({ selectedNode, aiQuestion, setAiQuestion, hand
         {aiLoading ? <><i className="ti ti-loader-2" style={{ fontSize: 16, animation: 'spin 0.6s linear infinite' }} /> Thinking…</> : <><i className="ti ti-sparkles" style={{ fontSize: 16 }} /> Ask Repogami</>}
       </button>
 
-      {/* Premium Answer Box */}
+      {/* Boxies */}
       {aiAnswer && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, marginTop: 8, animation: 'fade-up 0.4s ease' }}>
           <div style={{ fontSize: 11, fontFamily: T.sans, fontWeight: 700, color: T.textMuted, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 12, flexShrink: 0 }}>

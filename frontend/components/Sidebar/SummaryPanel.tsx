@@ -113,7 +113,6 @@ export default function SummaryPanel({
 
         <div style={{ height: 1, background: T.border, margin: '0 0 24px' }} />
 
-        {/* Sleek Architecture Diagram Button */}
         <div style={{ marginBottom: 24 }}>
           <button
             onClick={generateArchitecture} disabled={archLoading}

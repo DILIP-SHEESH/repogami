@@ -49,7 +49,6 @@ export default function RepoGami() {
 
   const deepLinkRan = useRef(false);
 
-  // ── Analyze ─────────────────────────────────────────────────────────────────
   const analyze = useCallback(async (e?: React.FormEvent, urlOverride?: string) => {
     if (e) e.preventDefault();
     const target = (urlOverride ?? url).trim();
@@ -119,7 +118,6 @@ export default function RepoGami() {
     analyze(undefined, q);
   }, [analyze]);
 
-  // ── Node click ──────────────────────────────────────────────────────────────
   const handleNodeClick = useCallback((node: GNode) => {
     setSelectedNode(node); setAiAnswer(''); setAiQuestion('');
     setBlastMode(false); setSidebarTab('node');
@@ -144,7 +142,6 @@ export default function RepoGami() {
     }
   }, [data]);
 
-  // ── Ask AI ──────────────────────────────────────────────────────────────────
   const handleAsk = useCallback(async (qOverride?: string) => {
     const question = qOverride || aiQuestion;
     if (!selectedNode || !question.trim() || !data) return;
@@ -173,7 +170,6 @@ export default function RepoGami() {
     finally { setAiLoading(false); }
   }, [selectedNode, aiQuestion, data, analyzedUrl, API]);
 
-  // ── Highlight smell / vitals targets on graph ─────────────────────────────────
   const handleInspectIds = useCallback((ids: string[]) => {
     if (!data || ids.length === 0) return;
     const hn = new Set<string>(ids);
@@ -202,14 +198,12 @@ export default function RepoGami() {
     if (window.innerWidth <= 992) setMobileSidebarOpen(true);
   }, [data]);
 
-  // ── Blast radius ─────────────────────────────────────────────────────────────
   const runBlast = useCallback(() => {
     if (!selectedNode || !data) return;
     setBlastLoading(true);
     setTimeout(() => { setBlastMode(true); setBlastLoading(false); }, 500);
   }, [selectedNode, data]);
 
-  // ── README ───────────────────────────────────────────────────────────────────
   const generateReadme = useCallback(async () => {
     if (!data) return;
     setReadmeLoading(true); setReadme('');
@@ -257,7 +251,6 @@ export default function RepoGami() {
       display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100vh',
     }}>
 
-      {/* ── HEADER (MOBBIN PILL) ──────────────────────────────────────────────── */}
       <div className="rg-header-wrapper">
         <header className="rg-header">
           

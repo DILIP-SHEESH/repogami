@@ -14,8 +14,6 @@ interface GraphCanvasProps {
   graphRef: React.MutableRefObject<any>;
 }
 
-// ─── Role → visual config ────────────────────────────────────────────────────
-
 const ROLE_VIS: Record<string, {
   color: number;    // THREE hex
   emissive: number; // glow color
@@ -34,8 +32,6 @@ const ROLE_VIS: Record<string, {
 function getRoleVis(n: GNode) {
   return ROLE_VIS[n.role] ?? ROLE_VIS.leaf;
 }
-
-// ─── Bloom post-processing setup ─────────────────────────────────────────────
 
 function setupBloom(graphRef: React.MutableRefObject<any>) {
   const g = graphRef.current;
@@ -84,8 +80,6 @@ function setupBloom(graphRef: React.MutableRefObject<any>) {
     // Silent fallback
   }
 }
-
-// ─── Star field background (Dark particles for light theme) ───────────────────
 
 function addStarField(graphRef: React.MutableRefObject<any>) {
   const g = graphRef.current;
@@ -158,7 +152,6 @@ function tickPulseRings(scene: any) {
   }
 }
 
-// ─── Shockwave for blast radius ───────────────────────────────────────────────
 
 type ShockwaveState = { mesh: any; born: number } | null;
 let activeShockwave: ShockwaveState = null;
@@ -366,7 +359,6 @@ function ControlsHint() {
   );
 }
 
-// ─── Node label (Light Theme) ─────────────────────────────────────────────────
 
 function buildNodeLabel(n: GNode): string {
   const role      = ROLES[n.role]?.label ?? 'Module';
@@ -386,8 +378,6 @@ function buildNodeLabel(n: GNode): string {
     </div>
   </div>`;
 }
-
-// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function GraphCanvas({
   data, highlightNodes, highlightLinks, selectedNode, handleNodeClick, graphRef,
