@@ -347,7 +347,6 @@ function EdgeLayer({ data, nodePos, activeNode, canvas }: {
         const isThick  = edge.style === 'thick';
         const isDash   = edge.style === 'dashed';
 
-        // Exit bottom of source, enter top of dest (when below), otherwise curved
         const fx = from.x;
         const fy = from.y + from.h / 2 - 4;
         const tx = to.x;
@@ -357,10 +356,10 @@ function EdgeLayer({ data, nodePos, activeNode, canvas }: {
         const cp2y = ty - dy * 0.5;
         const d = `M ${fx} ${fy} C ${fx} ${cp1y}, ${tx} ${cp2y}, ${tx} ${ty}`;
         const midX = (fx + tx) / 2;
-        const midY = (fy + ty) / 2 - 6;
+        const midY = (fy + ty) / 2 - 8;
 
-        const stroke = isThick ? '#444' : isActive ? '#111' : '#cccccc';
-        const strokeW = isThick ? 2.5 : isActive ? 1.5 : 1;
+        const stroke = isThick ? '#333' : isActive ? '#111' : '#bbbbbb';
+        const strokeW = isThick ? 3 : isActive ? 1.8 : 1;
         const marker = isThick ? 'url(#arr-thick)' : isActive ? 'url(#arr-active)' : 'url(#arr)';
 
         return (
@@ -443,21 +442,22 @@ function DiagramNodeCard({
         width: node.w,
         minHeight: node.h,
         background: isActive ? '#fff' : T.bgSurface,
-        border: `${isActive ? 2 : 1}px solid ${isActive ? '#111' : hovering ? '#888' : T.border}`,
+        border: `${isActive ? 2 : 1}px solid ${isActive ? '#111' : hovering ? '#999' : T.border}`,
         borderRadius: 16,
         padding: '14px 16px',
         cursor: isDragging.current ? 'grabbing' : 'grab',
         userSelect: 'none',
         opacity: isDimmed ? 0.18 : 1,
-        transition: 'opacity 0.2s, border-color 0.15s, box-shadow 0.15s',
+        transition: 'opacity 0.2s, border-color 0.15s, box-shadow 0.2s',
         boxShadow: isActive
-          ? '0 8px 32px rgba(0,0,0,0.12)'
+          ? '0 8px 32px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04)'
           : hovering
-            ? '0 4px 20px rgba(0,0,0,0.08)'
+            ? '0 6px 24px rgba(0,0,0,0.1)'
             : '0 2px 8px rgba(0,0,0,0.04)',
         zIndex: isActive ? 20 : hovering ? 15 : 10,
         outline: isActive ? '3px solid rgba(0,0,0,0.06)' : 'none',
         outlineOffset: 3,
+        backdropFilter: isActive ? 'blur(4px)' : 'none',
       }}
     >
       {/* Label — full text, wraps */}
@@ -696,23 +696,24 @@ function CanvasDiagram({ data, onNodeSelect, activeNode }: {
         }}>
           {/* Layer bands (behind everything) */}
           {data.layers.map(layer => (
-            <div key={layer.id} style={{
-              position: 'absolute', left: CANVAS_SIDE / 2, top: layer.y,
-              width: data.width - CANVAS_SIDE, height: layer.h,
-              borderRadius: 24,
-              background: 'rgba(0,0,0,0.015)',
-              border: `1px solid rgba(0,0,0,0.06)`,
-            }}>
-              <div style={{
-                position: 'absolute', top: 16, left: 20,
-                fontSize: 11, fontWeight: 700, color: T.textDim,
-                letterSpacing: '0.08em', textTransform: 'uppercase',
-                fontFamily: "'DM Sans', system-ui, sans-serif",
-                userSelect: 'none',
+              <div key={layer.id} style={{
+                position: 'absolute', left: CANVAS_SIDE / 2, top: layer.y,
+                width: data.width - CANVAS_SIDE, height: layer.h,
+                borderRadius: 24,
+                background: layer.label === 'Other' ? 'rgba(0,0,0,0.008)' : 'rgba(0,0,0,0.015)',
+                border: layer.label === 'Other' ? `1px dashed rgba(0,0,0,0.04)` : `1px solid rgba(0,0,0,0.06)`,
+                transition: 'background 0.3s',
               }}>
-                {layer.label}
+                <div style={{
+                  position: 'absolute', top: 16, left: 20,
+                  fontSize: 11, fontWeight: 700, color: layer.label === 'Other' ? T.textDim : '#555',
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                  fontFamily: "'DM Sans', system-ui, sans-serif",
+                  userSelect: 'none',
+                }}>
+                  {layer.label}
+                </div>
               </div>
-            </div>
           ))}
 
           {/* SVG edge overlay */}

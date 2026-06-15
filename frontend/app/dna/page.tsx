@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, Suspense } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { RepoDna, CompassStep, Stats, Summary } from '../../types';
 
@@ -35,36 +35,46 @@ function DnaPageInner() {
 
   const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-  const load = useCallback(async () => {
-    if (!repo) { setStatus('error'); return; }
-    setStatus('loading');
-    try {
-      const analyzeRes = await fetch(`${API}/analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repo_url: repo }),
-      });
-      if (!analyzeRes.ok) throw new Error('analyze failed');
-      const a = await analyzeRes.json();
-      if (!a.repo_dna) throw new Error('no dna');
+  useEffect(() => {
+    async function load() {
+      if (!repo) { setStatus('error'); return; }
+      setStatus('loading');
+      try {
+        const analyzeRes = await fetch(`${API}/analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ repo_url: repo }),
+        });
+        if (!analyzeRes.ok) throw new Error('analyze failed');
+        const a = await analyzeRes.json();
+        if (!a.repo_dna) throw new Error('no dna');
 
-      setPayload({
-        repo: `${a.meta.owner}/${a.meta.repo}`,
-        project_name: a.summary.project_name,
-        tagline: a.summary.tagline,
-        summary: a.summary,
-        stats: a.stats,
-        repo_dna: a.repo_dna,
-        contributor_compass: a.contributor_compass ?? [],
-        vitals: a.vitals,
-      });
-      setStatus('done');
-    } catch {
-      setStatus('error');
+        setPayload({
+          repo: `${a.meta.owner}/${a.meta.repo}`,
+          project_name: a.summary.project_name,
+          tagline: a.summary.tagline,
+          summary: a.summary,
+          stats: a.stats,
+          repo_dna: a.repo_dna,
+          contributor_compass: a.contributor_compass ?? [],
+          vitals: a.vitals,
+        });
+        setStatus('done');
+      } catch {
+        setStatus('error');
+      }
     }
+    load();
   }, [repo, API]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    fetch(`${API_TRACK}/track`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'dna_views', repo }),
+    }).catch(() => {});
+  }, [repo]);
+
+  const API_TRACK = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
   const copyTweet = () => {
     if (!payload) return;
@@ -77,6 +87,10 @@ function DnaPageInner() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+    fetch(`${API_TRACK}/track`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'shares', label: 'dna_tweet', repo: payload.repo }),
+    }).catch(() => {});
   };
 
   const dna = payload?.repo_dna;

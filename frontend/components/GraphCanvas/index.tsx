@@ -20,13 +20,14 @@ const ROLE_VIS: Record<string, {
   size: number;
   geometry: string; // 'sphere' | 'ico' | 'cone' | 'box' | 'torus' | 'oct'
   bloom: boolean;
+  symbol: string;   // legend symbol
 }> = {
-  hub:    { color: 0xef4444, emissive: 0xfca5a5, size: 11, geometry: 'ico',   bloom: true  }, // Vibrant Red
-  entry:  { color: 0x3b82f6, emissive: 0x93c5fd, size: 8,  geometry: 'cone',  bloom: true  }, // Bright Blue
-  shared: { color: 0x10b981, emissive: 0x6ee7b7, size: 6,  geometry: 'oct',   bloom: false }, // Emerald Green
-  leaf:   { color: 0xf59e0b, emissive: 0xfcd34d, size: 3,  geometry: 'sphere',bloom: false }, // Amber/Yellow
-  orphan: { color: 0x8b5cf6, emissive: 0xc4b5fd, size: 2,  geometry: 'box',   bloom: false }, // Purple
-  config: { color: 0x64748b, emissive: 0x94a3b8, size: 2,  geometry: 'box',   bloom: false }, // Slate
+  hub:    { color: 0xef4444, emissive: 0xfca5a5, size: 11, geometry: 'ico',   bloom: true,  symbol: '⬡' },
+  entry:  { color: 0x3b82f6, emissive: 0x93c5fd, size: 8,  geometry: 'cone',  bloom: true,  symbol: '▲' },
+  shared: { color: 0x10b981, emissive: 0x6ee7b7, size: 6,  geometry: 'oct',   bloom: false, symbol: '◆' },
+  leaf:   { color: 0xf59e0b, emissive: 0xfcd34d, size: 3,  geometry: 'sphere',bloom: false, symbol: '●' },
+  orphan: { color: 0x8b5cf6, emissive: 0xc4b5fd, size: 2,  geometry: 'sphere',bloom: false, symbol: '○' },
+  config: { color: 0x64748b, emissive: 0x94a3b8, size: 2,  geometry: 'box',   bloom: false, symbol: '□' },
 };
 
 function getRoleVis(n: GNode) {
@@ -304,19 +305,16 @@ function GraphHUD({ data, selectedNode, highlightNodes, blastMode }: {
         display: 'flex', flexDirection: 'column', gap: 5,
         boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
       }}>
-        {[
-          { shape: '⬡', label: 'Hub',    color: '#ef4444' },
-          { shape: '▲', label: 'Entry',  color: '#3b82f6' },
-          { shape: '◆', label: 'Shared', color: '#10b981' },
-          { shape: '●', label: 'Leaf',   color: '#f59e0b' },
-          { shape: '□', label: 'Config', color: '#64748b' },
-          { shape: '○', label: 'Orphan', color: '#8b5cf6' },
-        ].map(r => (
-          <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 12, color: r.color, width: 14, textAlign: 'center' }}>{r.shape}</span>
-            <span style={{ fontSize: 11, color: '#333', fontWeight: 600 }}>{r.label}</span>
-          </div>
-        ))}
+        {(['hub','entry','shared','leaf','orphan','config'] as const).map(role => {
+          const v = ROLE_VIS[role];
+          const c = `#${v.color.toString(16).padStart(6, '0')}`;
+          return (
+            <div key={role} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12, color: c, width: 14, textAlign: 'center' }}>{v.symbol}</span>
+              <span style={{ fontSize: 11, color: '#333', fontWeight: 600, textTransform: 'capitalize' }}>{role}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -362,10 +360,11 @@ function ControlsHint() {
 
 function buildNodeLabel(n: GNode): string {
   const role      = ROLES[n.role]?.label ?? 'Module';
+  const vis      = ROLE_VIS[n.role] ?? ROLE_VIS.leaf;
   const flags     = [
-    n.is_hub    ? '⬡ hub'    : null,
-    n.is_entry  ? '▲ entry'  : null,
-    n.is_orphan ? '○ orphan' : null,
+    n.is_hub    ? `${vis.symbol} hub`    : null,
+    n.is_entry  ? `${vis.symbol} entry`  : null,
+    n.is_orphan ? `${vis.symbol} orphan` : null,
   ].filter(Boolean).join(' · ');
 
   return `<div style="font-family:Inter,system-ui,sans-serif;padding:14px 16px;background:rgba(255,255,255,0.95);border:1px solid rgba(0,0,0,0.08);border-radius:14px;color:#111;max-width:260px;box-shadow:0 8px 32px rgba(0,0,0,0.1);backdrop-filter:blur(16px)">

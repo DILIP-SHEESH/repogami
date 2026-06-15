@@ -1,23 +1,3 @@
-"""
-RepoGami Backend — FastAPI v3
-Codebase intelligence engine: dependency parsing, semantic role detection,
-blast radius computation, dead code detection, AI-powered file chat,
-architecture diagram generation, README generation.
-
-Free stack:
-  - GitHub Trees API (60 req/hr unauth, 5000 req/hr with token)
-  - Groq API: free tier
-    llama-3.1-8b-instant  → fast/cheap, used for summaries
-    llama-3.3-70b-versatile → quality, used for architecture graph only
-    Sign up: https://console.groq.com (no credit card)
-
-Rate limit strategy:
-  - Two-model split: 8b for high-volume calls, 70b only for arch graph
-  - Exponential backoff on 429s (1s, 2s, 4s)
-  - In-memory LRU cache keyed by owner/repo (avoids repeat Groq calls)
-  - Response headers expose remaining Groq quota for frontend awareness
-"""
-
 import os
 import re
 import json
@@ -25,12 +5,14 @@ import posixpath
 import asyncio
 import httpx
 import time
+import uuid
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-from collections import defaultdict, OrderedDict
+from collections import defaultdict
+from cachetools import LRUCache as _LRUCache
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -47,49 +29,63 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─────────────────────────────────────────────────────────────────────────────
-# In-memory LRU cache (max 100 entries, per owner/repo)
-# ─────────────────────────────────────────────────────────────────────────────
+class TTLWrapper:
+    def __init__(self, maxsize=100, ttl=3600):
+        self._cache = _LRUCache(maxsize=maxsize)
+        self._timestamps = {}
+        self._ttl = ttl
 
-class LRUCache:
-    def __init__(self, maxsize: int = 100):
-        self._cache: OrderedDict = OrderedDict()
-        self._maxsize = maxsize
-        self._timestamps: dict[str, float] = {}
-        self._ttl = 3600  # 1 hour TTL
-
-    def get(self, key: str):
-        if key not in self._cache:
-            return None
-        if time.time() - self._timestamps.get(key, 0) > self._ttl:
+    def get(self, key):
+        ts = self._timestamps.get(key, 0)
+        if ts and time.time() - ts > self._ttl:
             self._cache.pop(key, None)
             self._timestamps.pop(key, None)
             return None
-        self._cache.move_to_end(key)
-        return self._cache[key]
+        return self._cache.get(key)
 
-    def set(self, key: str, value):
-        if key in self._cache:
-            self._cache.move_to_end(key)
+    def set(self, key, value):
         self._cache[key] = value
         self._timestamps[key] = time.time()
-        if len(self._cache) > self._maxsize:
-            oldest = next(iter(self._cache))
-            self._cache.pop(oldest)
-            self._timestamps.pop(oldest, None)
 
-    def invalidate(self, key: str):
+    def invalidate(self, key):
         self._cache.pop(key, None)
         self._timestamps.pop(key, None)
 
+_analyze_cache = TTLWrapper()
+_arch_cache = TTLWrapper()
 
-_analyze_cache = LRUCache(maxsize=100)
-_arch_cache    = LRUCache(maxsize=100)
+_analyze_jobs: dict[str, dict] = {}
 
+def start_job(owner: str, repo: str) -> str:
+    job_id = uuid.uuid4().hex[:12]
+    _analyze_jobs[job_id] = {
+        "owner": owner,
+        "repo": repo,
+        "stage": "starting",
+        "progress": 0,
+        "status": "running",
+    }
+    return job_id
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Constants
-# ─────────────────────────────────────────────────────────────────────────────
+def update_job(job_id: str, stage: str, progress: int):
+    if job_id in _analyze_jobs:
+        _analyze_jobs[job_id].update({"stage": stage, "progress": progress})
+
+def finish_job(job_id: str):
+    if job_id in _analyze_jobs:
+        _analyze_jobs[job_id]["status"] = "done"
+        _analyze_jobs[job_id]["progress"] = 100
+
+def fail_job(job_id: str):
+    if job_id in _analyze_jobs:
+        _analyze_jobs[job_id]["status"] = "error"
+
+def cleanup_jobs():
+    now = time.time()
+    stale = [jid for jid, j in list(_analyze_jobs.items()) if j.get("_ts", 0) < now - 600]
+    for jid in stale:
+        _analyze_jobs.pop(jid, None)
+
 
 SKIP_DIRS = frozenset({
     "node_modules", ".git", "__pycache__", ".next", "dist", "build",
@@ -146,10 +142,6 @@ LAYER_HINTS = {
 MODEL_FAST    = "llama-3.1-8b-instant"      # summaries, ask, README
 MODEL_QUALITY = "llama-3.3-70b-versatile"   # architecture graph (pass 2 only)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Pydantic models
-# ─────────────────────────────────────────────────────────────────────────────
 
 class AnalyzeRequest(BaseModel):
     repo_url: str
@@ -210,10 +202,6 @@ class ArchitectureRequest(BaseModel):
     force_refresh: Optional[bool] = False
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# URL / GitHub helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
 def parse_github_url(url: str) -> tuple[str, str]:
     url = url.strip().rstrip("/")
     for prefix in ["https://github.com/", "http://github.com/", "github.com/"]:
@@ -248,10 +236,6 @@ def is_config(path: str) -> bool:
 def get_language(path: str) -> str:
     return EXT_LANGUAGE.get(file_ext(path), "other")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Dependency extraction
-# ─────────────────────────────────────────────────────────────────────────────
 
 def extract_deps(content: str, path: str, all_paths: set[str]) -> list[dict]:
     edges = []
@@ -353,10 +337,6 @@ def extract_deps(content: str, path: str, all_paths: set[str]) -> list[dict]:
     return result
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Graph intelligence
-# ─────────────────────────────────────────────────────────────────────────────
-
 def compute_metrics(nodes_list: list[dict], edges: list[dict]) -> dict:
     indegree: dict[str, int] = defaultdict(int)
     outdegree: dict[str, int] = defaultdict(int)
@@ -412,10 +392,6 @@ def detect_layer(path: str) -> str:
 
 
 def compute_codebase_vitals(nodes: list[dict], edges: list[dict], stats: dict) -> dict:
-    """
-    Deterministic codebase intelligence — no LLM.
-    Powers health score, smell radar, and refactor playbook.
-    """
     total = len(nodes) or 1
     edge_count = len(edges)
     orphans = stats.get("orphan_count", 0)
@@ -624,10 +600,6 @@ def _vitals_tagline(health: int, smells: list, hub_pct: float, orphan_pct: float
 
 
 def compute_contributor_compass(nodes: list[dict], edges: list[dict]) -> list[dict]:
-    """
-    Ordered reading path for someone landing in the repo cold.
-    Entry → spine toward hub → the gravity well itself.
-    """
     deps: dict[str, list[str]] = defaultdict(list)
     for e in edges:
         deps[e["source"]].append(e["target"])
@@ -709,7 +681,6 @@ def compute_repo_dna(
     edges: list[dict],
     compass: list[dict],
 ) -> dict:
-    """Shareable repo fingerprint — built for social posts and team Slack."""
     health = vitals["health_score"]
     m = vitals["metrics"]
     god = vitals.get("god_files") or []
@@ -801,7 +772,6 @@ def compute_repo_dna(
 
 
 def compute_touch_index(node_id: str, edges: list[dict], parseable_count: int, depth: int = 6) -> dict:
-    """How much of the codebase ripples if this file changes (reverse import BFS)."""
     affected: set[str] = set()
     frontier = {node_id}
     for _ in range(depth):
@@ -834,10 +804,6 @@ def compute_touch_index(node_id: str, edges: list[dict], parseable_count: int, d
         ),
     }
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# LLM — Groq with retry + backoff
-# ─────────────────────────────────────────────────────────────────────────────
 
 _last_groq_quota: dict = {}
 
@@ -932,10 +898,6 @@ def safe_json_parse(text: str) -> dict:
     except Exception:
         return {}
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Architecture: 2-pass JSON graph pipeline
-# ─────────────────────────────────────────────────────────────────────────────
 
 ARCH_EXPLAIN_SYSTEM = """You are a principal software engineer analyzing a repository.
 You will receive a file tree and project description.
@@ -1092,67 +1054,122 @@ Most-imported files:
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# README system prompt
-# ─────────────────────────────────────────────────────────────────────────────
-
 README_SYSTEM = """You are a senior open-source developer writing a world-class README.md.
 
-The README you produce must follow the format that developers love and star:
+Write a clean, professional README in the following structure. Each section must be specific to the actual repo — no generic filler.
 
 STRUCTURE (in this exact order):
-1. Centered header block:
-   - HTML <div align="center"> wrapper
-   - H1 project name
-   - Italic one-line tagline
-   - Blank line
-   - shields.io badges row (language, license MIT, stars, last commit, issues)
-   - Blank line, close </div>
+1. ## Project Name
+   One-paragraph description of what this project does and who it's for.
+   Include a shields.io badges row below the paragraph (language, license, GitHub stars, last commit, issues).
 
-2. Table of Contents (linked anchors, 6-8 items)
+2. ## Features
+   5-8 bullet points, each with a bold keyword. Reference actual module/file names.
 
-3. ## ✨ Features
-   - 6-8 bullets, each starting with a bold keyword specific to THIS codebase
-   - Reference actual module/file names where relevant
+3. ## Architecture
+   2-3 sentences describing the actual pattern.
+   ASCII flow diagram with real module/file names using box-drawing chars (─ │ ├ └ →).
 
-4. ## 🏗️ Architecture
-   - 2-3 sentences describing the actual pattern
-   - ASCII flow diagram referencing real module names (use →, │, ├──, └──)
-
-5. ## 🛠️ Tech Stack
+4. ## Tech Stack
    | Technology | Role | Notes |
-   Three-column markdown table. Be specific, not generic.
+   Three-column markdown table with specific technologies detected.
 
-6. ## 🚀 Getting Started
+5. ## Getting Started
    ### Prerequisites
    ### Installation
-   Shell code blocks with actual commands for the detected stack.
+   Shell code blocks with real commands.
 
-7. ## 💡 Usage
-   2-3 realistic examples with shell/code blocks referencing actual entry points.
+6. ## Usage
+   2-3 realistic examples with code blocks referencing actual entry points.
 
-8. ## 📁 Project Structure
-   Annotated file tree, max 20 lines, with inline comments after each path.
+7. ## Project Structure
+   Annotated file tree, max 20 lines, with inline comments.
 
-9. ## 🤝 Contributing
-   Short paragraph + standard fork → branch → PR workflow.
+8. ## Contributing
+   Brief paragraph + standard fork → branch → PR workflow.
 
-10. ## 📄 License
-    MIT license line with badge.
+9. ## License
+   MIT badge line.
 
 RULES:
-- Output raw Markdown only. No preamble, no "Here is your README".
-- Every section must be specific to the actual repo — no generic lorem ipsum.
-- shields.io badge format: ![badge](https://img.shields.io/badge/LABEL-VALUE-COLOR?style=flat-square&logo=LOGO&logoColor=white)
-- For GitHub-dynamic badges use: https://img.shields.io/github/METRIC/OWNER/REPO?style=flat-square
-- ASCII diagrams: use box-drawing chars (─, │, ├, └, →) not hyphens.
-- Never mention RepoGami, AI generation, or any tooling used to create this README.
-- Never use placeholder text like [your name] or [link here] — infer from context."""
+- Output raw Markdown only. No preamble.
+- shields.io badges: ![badge](https://img.shields.io/badge/LABEL-VALUE-COLOR?style=flat-square&logo=LOGO&logoColor=white)
+- GitHub dynamic: https://img.shields.io/github/METRIC/OWNER/REPO?style=flat-square
+- Never mention RepoGami, AI, or any tool used to create this README.
+- Never use placeholders like [your name]."""
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Routes
-# ─────────────────────────────────────────────────────────────────────────────
+SERVER_START = time.time()
+
+_analytics: dict[str, dict] = {
+    "events": [],
+    "daily": {},
+    "repos": {},  # "owner/repo" -> { analyses: 0, dna_views: 0, blast_views: 0, shares: 0, last_analyzed: ts }
+}
+
+def _today() -> str:
+    return time.strftime("%Y-%m-%d")
+
+def _analytics_bucket() -> dict:
+    d = _today()
+    if d not in _analytics["daily"]:
+        _analytics["daily"][d] = {
+            "views": 0, "analyses": 0, "dna_views": 0,
+            "blast_views": 0, "shares": 0, "node_clicks": 0,
+        }
+    return _analytics["daily"][d]
+
+def track_event(event_type: str, label: str = "", repo: str = ""):
+    bucket = _analytics_bucket()
+    if event_type in bucket:
+        bucket[event_type] += 1
+
+    if repo:
+        if repo not in _analytics["repos"]:
+            _analytics["repos"][repo] = {"analyses": 0, "dna_views": 0, "blast_views": 0, "shares": 0, "readmes": 0, "archs": 0, "last_analyzed": 0}
+        rstats = _analytics["repos"][repo]
+        if event_type == "analyses":
+            rstats["analyses"] += 1
+            rstats["last_analyzed"] = time.time()
+        elif event_type == "dna_views":
+            rstats["dna_views"] += 1
+        elif event_type == "blast_views":
+            rstats["blast_views"] += 1
+        elif event_type in ("shares",):
+            rstats["shares"] += 1
+        if event_type == "shares" and label in ("readme",):
+            rstats["readmes"] += 1
+        if event_type == "shares" and label in ("architecture",):
+            rstats["archs"] += 1
+
+    _analytics["events"].append({
+        "time": time.time(),
+        "type": event_type,
+        "label": label,
+        "repo": repo,
+    })
+    if len(_analytics["events"]) > 5000:
+        _analytics["events"] = _analytics["events"][-5000:]
+
+
+@app.post("/track")
+async def track(req: dict):
+    event_type = req.get("type", "view")
+    label = req.get("label", "")
+    repo = req.get("repo", "")
+    track_event(event_type, label, repo)
+    return {"ok": True}
+
+
+@app.get("/stats/totals")
+async def stats_totals():
+    daily = _analytics["daily"]
+    totals = {"views": 0, "analyses": 0}
+    for d, b in daily.items():
+        totals["views"] += b.get("views", 0)
+        totals["analyses"] += b.get("analyses", 0)
+    return totals
+
 
 @app.get("/")
 async def root():
@@ -1172,135 +1189,156 @@ async def quota():
 async def analyze(req: AnalyzeRequest):
     owner, repo = parse_github_url(req.repo_url)
     cache_key = f"{owner}/{repo}"
+    track_event("analyses", repo=f"{owner}/{repo}")
 
     cached = _analyze_cache.get(cache_key)
     if cached:
         return {**cached, "_cached": True}
 
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.get(
-            f"https://api.github.com/repos/{owner}/{repo}/git/trees/HEAD?recursive=1",
-            headers=gh_headers(),
-        )
+    job_id = start_job(owner, repo)
+    _analyze_jobs[job_id]["_ts"] = time.time()
 
-    if resp.status_code == 404:
-        raise HTTPException(404, f"Repo '{owner}/{repo}' not found or is private.")
-    if resp.status_code == 403:
-        raise HTTPException(403, "GitHub rate limit hit. Set GITHUB_TOKEN in .env for 5000 req/hr.")
-    if resp.status_code != 200:
-        raise HTTPException(resp.status_code, resp.text[:300])
+    try:
+        update_job(job_id, "Fetching file tree from GitHub…", 10)
 
-    tree = resp.json()
-    all_items = tree.get("tree", [])
-    truncated = tree.get("truncated", False)
-
-    files = [
-        item for item in all_items
-        if item["type"] == "blob" and not should_skip(item["path"])
-    ]
-
-    source_files = [f for f in files if file_ext(f["path"]) in PARSEABLE_EXT]
-    config_files = [f for f in files if is_config(f["path"])]
-    other_files  = [f for f in files if f not in source_files and f not in config_files]
-    files = source_files[:300] + config_files[:50] + other_files[:50]
-    all_paths = {f["path"] for f in files}
-
-    to_fetch = [f for f in files if file_ext(f["path"]) in PARSEABLE_EXT][:100]
-    contents: dict[str, str] = {}
-
-    async def fetch_file(path: str, client: httpx.AsyncClient):
-        try:
-            r = await client.get(
-                f"https://raw.githubusercontent.com/{owner}/{repo}/HEAD/{path}",
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(
+                f"https://api.github.com/repos/{owner}/{repo}/git/trees/HEAD?recursive=1",
                 headers=gh_headers(),
             )
-            if r.status_code == 200:
-                contents[path] = r.text[:8000]
-        except Exception:
-            pass
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        for i in range(0, len(to_fetch), 40):
-            batch = to_fetch[i:i+40]
-            await asyncio.gather(*[fetch_file(f["path"], client) for f in batch])
+        if resp.status_code == 404:
+            fail_job(job_id)
+            raise HTTPException(404, f"Repo '{owner}/{repo}' not found or is private.")
+        if resp.status_code == 403:
+            fail_job(job_id)
+            raise HTTPException(403, "GitHub rate limit hit. Set GITHUB_TOKEN in .env for 5000 req/hr.")
+        if resp.status_code != 200:
+            fail_job(job_id)
+            raise HTTPException(resp.status_code, resp.text[:300])
 
-    edges: list[dict] = []
-    for path, content in contents.items():
-        edges.extend(extract_deps(content, path, all_paths))
+        tree = resp.json()
+        all_items = tree.get("tree", [])
+        truncated = tree.get("truncated", False)
 
-    seen_e: set[tuple] = set()
-    unique_edges = []
-    for e in edges:
-        k = (e["source"], e["target"])
-        if k not in seen_e:
-            seen_e.add(k)
-            unique_edges.append(e)
-    edges = unique_edges
+        files = [
+            item for item in all_items
+            if item["type"] == "blob" and not should_skip(item["path"])
+        ]
 
-    metrics = compute_metrics(files, edges)
-    ind = metrics["indegree"]
-    outd = metrics["outdegree"]
-    deps_of = metrics["dependencies"]
-    dependents_of = metrics["dependents"]
+        source_files = [f for f in files if file_ext(f["path"]) in PARSEABLE_EXT]
+        config_files = [f for f in files if is_config(f["path"])]
+        other_files  = [f for f in files if f not in source_files and f not in config_files]
+        files = source_files[:300] + config_files[:50] + other_files[:50]
+        all_paths = {f["path"] for f in files}
 
-    nodes = []
-    for f in files:
-        path = f["path"]
-        config = is_config(path)
-        i = ind.get(path, 0)
-        o = outd.get(path, 0)
-        lang = get_language(path)
-        role = get_role(path, i, o, config)
+        update_job(job_id, "Fetching file contents…", 25)
 
-        nodes.append({
-            "id": path,
-            "name": os.path.basename(path),
-            "path": path,
-            "dir": posixpath.dirname(path) or "/",
-            "language": lang,
-            "lang_color": LANG_COLOR.get(lang, LANG_COLOR["other"]),
-            "extension": file_ext(path),
-            "size": f.get("size", 0),
-            "role": role,
-            "indegree": i,
-            "outdegree": o,
-            "dependents": dependents_of.get(path, [])[:15],
-            "dependencies": deps_of.get(path, [])[:15],
-            "is_orphan": role == "orphan",
-            "is_entry":  role == "entry",
-            "is_hub":    role == "hub",
-            "is_config": config,
-        })
+        to_fetch = [f for f in files if file_ext(f["path"]) in PARSEABLE_EXT][:100]
+        contents: dict[str, str] = {}
 
-    key_filenames = [
-        "README.md", "package.json", "pyproject.toml", "requirements.txt",
-        "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "composer.json",
-        "Gemfile", "setup.py", "setup.cfg", "main.py", "app.py", "index.ts",
-        "index.js", "main.ts", "server.py", "server.ts", "app.ts",
-    ]
-    key_content_parts = []
-    for fname in key_filenames:
-        for item in files:
-            if os.path.basename(item["path"]) == fname and item["path"] in contents:
-                key_content_parts.append(
-                    f"=== {item['path']} ===\n{contents[item['path']][:800]}"
+        async def fetch_file(path: str, client: httpx.AsyncClient):
+            try:
+                r = await client.get(
+                    f"https://raw.githubusercontent.com/{owner}/{repo}/HEAD/{path}",
+                    headers=gh_headers(),
                 )
-                break
+                if r.status_code == 200:
+                    contents[path] = r.text[:8000]
+            except Exception:
+                pass
 
-    entry_nodes = [n for n in nodes if n["is_entry"]][:3]
-    seen_paths = {k.split("===")[1].strip() for k in key_content_parts if "===" in k}
-    for n in entry_nodes:
-        if n["path"] in contents and n["path"] not in seen_paths:
-            key_content_parts.append(
-                f"=== {n['path']} (entry point) ===\n{contents[n['path']][:500]}"
-            )
+        async with httpx.AsyncClient(timeout=60) as client:
+            batch_size = 80
+            total_batches = max(1, (len(to_fetch) + batch_size - 1) // batch_size)
+            for i in range(0, len(to_fetch), batch_size):
+                batch = to_fetch[i:i+batch_size]
+                await asyncio.gather(*[fetch_file(f["path"], client) for f in batch])
+                update_job(job_id, f"Fetching file contents… ({i + len(batch)}/{len(to_fetch)})", 25 + int(60 * (i + len(batch)) / max(len(to_fetch), 1)))
 
-    file_list   = "\n".join(f["path"] for f in files[:100])
-    key_content = "\n\n".join(key_content_parts[:5])
+        update_job(job_id, "Parsing dependency graph…", 50)
 
-    summary_raw = await groq(
-        system="You are a senior software architect. Analyze codebases. Return only valid JSON.",
-        user=f"""Analyze this GitHub repository: {owner}/{repo}
+        edges: list[dict] = []
+        for path, content in contents.items():
+            edges.extend(extract_deps(content, path, all_paths))
+
+        seen_e: set[tuple] = set()
+        unique_edges = []
+        for e in edges:
+            k = (e["source"], e["target"])
+            if k not in seen_e:
+                seen_e.add(k)
+                unique_edges.append(e)
+        edges = unique_edges
+
+        metrics = compute_metrics(files, edges)
+        ind = metrics["indegree"]
+        outd = metrics["outdegree"]
+        deps_of = metrics["dependencies"]
+        dependents_of = metrics["dependents"]
+
+        update_job(job_id, "Computing semantic roles…", 65)
+
+        nodes = []
+        for f in files:
+            path = f["path"]
+            config = is_config(path)
+            i = ind.get(path, 0)
+            o = outd.get(path, 0)
+            lang = get_language(path)
+            role = get_role(path, i, o, config)
+
+            nodes.append({
+                "id": path,
+                "name": os.path.basename(path),
+                "path": path,
+                "dir": posixpath.dirname(path) or "/",
+                "language": lang,
+                "lang_color": LANG_COLOR.get(lang, LANG_COLOR["other"]),
+                "extension": file_ext(path),
+                "size": f.get("size", 0),
+                "role": role,
+                "indegree": i,
+                "outdegree": o,
+                "dependents": dependents_of.get(path, [])[:15],
+                "dependencies": deps_of.get(path, [])[:15],
+                "is_orphan": role == "orphan",
+                "is_entry":  role == "entry",
+                "is_hub":    role == "hub",
+                "is_config": config,
+            })
+
+        key_filenames = [
+            "README.md", "package.json", "pyproject.toml", "requirements.txt",
+            "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "composer.json",
+            "Gemfile", "setup.py", "setup.cfg", "main.py", "app.py", "index.ts",
+            "index.js", "main.ts", "server.py", "server.ts", "app.ts",
+        ]
+        key_content_parts = []
+        for fname in key_filenames:
+            for item in files:
+                if os.path.basename(item["path"]) == fname and item["path"] in contents:
+                    key_content_parts.append(
+                        f"=== {item['path']} ===\n{contents[item['path']][:800]}"
+                    )
+                    break
+
+        entry_nodes = [n for n in nodes if n["is_entry"]][:3]
+        seen_paths = {k.split("===")[1].strip() for k in key_content_parts if "===" in k}
+        for n in entry_nodes:
+            if n["path"] in contents and n["path"] not in seen_paths:
+                key_content_parts.append(
+                    f"=== {n['path']} (entry point) ===\n{contents[n['path']][:500]}"
+                )
+
+        update_job(job_id, "Building system blueprint…", 80)
+
+        file_list   = "\n".join(f["path"] for f in files[:100])
+        key_content = "\n\n".join(key_content_parts[:5])
+
+        summary_raw = await groq(
+            system="You are a senior software architect. Analyze codebases. Return only valid JSON.",
+            user=f"""Analyze this GitHub repository: {owner}/{repo}
 
 File list ({len(files)} total, first 100 shown):
 {file_list}
@@ -1324,72 +1362,92 @@ Return ONLY a valid JSON object (no markdown fences, no extra text):
     "one thing done unusually well"
   ]
 }}""",
-        max_tokens=600,
-        json_mode=True,
-        model=MODEL_FAST,
-    )
+            max_tokens=600,
+            json_mode=True,
+            model=MODEL_FAST,
+        )
 
-    summary = safe_json_parse(summary_raw)
-    if not summary:
-        summary = {
-            "project_name": repo,
-            "tagline": f"GitHub repository by {owner}",
-            "description": summary_raw[:200] if summary_raw else "Analysis unavailable.",
-            "tech_stack": [],
-            "architecture": "unknown",
-            "entry_points": [],
-            "key_modules": [],
-            "complexity": "unknown",
-            "insights": [],
+        summary = safe_json_parse(summary_raw)
+        if not summary:
+            summary = {
+                "project_name": repo,
+                "tagline": f"GitHub repository by {owner}",
+                "description": summary_raw[:200] if summary_raw else "Analysis unavailable.",
+                "tech_stack": [],
+                "architecture": "unknown",
+                "entry_points": [],
+                "key_modules": [],
+                "complexity": "unknown",
+                "insights": [],
+            }
+
+        lang_counts: dict[str, int] = defaultdict(int)
+        role_counts: dict[str, int] = defaultdict(int)
+        for n in nodes:
+            lang_counts[n["language"]] += 1
+            role_counts[n["role"]] += 1
+
+        top_hubs = sorted(
+            [n for n in nodes if n["is_hub"]],
+            key=lambda n: n["indegree"], reverse=True,
+        )[:5]
+
+        stats = {
+            "total_files": len(nodes),
+            "total_edges": len(edges),
+            "orphan_count": role_counts.get("orphan", 0),
+            "hub_count": role_counts.get("hub", 0),
+            "entry_count": role_counts.get("entry", 0),
+            "shared_count": role_counts.get("shared", 0),
+            "languages": dict(sorted(lang_counts.items(), key=lambda x: x[1], reverse=True)),
+            "top_hubs": [{"id": n["id"], "name": n["name"], "indegree": n["indegree"]} for n in top_hubs],
+            "role_counts": dict(role_counts),
         }
 
-    lang_counts: dict[str, int] = defaultdict(int)
-    role_counts: dict[str, int] = defaultdict(int)
-    for n in nodes:
-        lang_counts[n["language"]] += 1
-        role_counts[n["role"]] += 1
+        vitals = compute_codebase_vitals(nodes, edges, stats)
+        contributor_compass = compute_contributor_compass(nodes, edges)
+        repo_dna = compute_repo_dna(
+            owner, repo, summary, stats, vitals, nodes, edges, contributor_compass,
+        )
 
-    top_hubs = sorted(
-        [n for n in nodes if n["is_hub"]],
-        key=lambda n: n["indegree"], reverse=True,
-    )[:5]
+        result = {
+            "graph": {"nodes": nodes, "links": edges},
+            "summary": summary,
+            "stats": stats,
+            "vitals": vitals,
+            "contributor_compass": contributor_compass,
+            "repo_dna": repo_dna,
+            "meta": {
+                "owner": owner,
+                "repo": repo,
+                "url": f"https://github.com/{owner}/{repo}",
+                "truncated": truncated,
+                "files_fetched_for_deps": len(contents),
+            },
+        }
 
-    stats = {
-        "total_files": len(nodes),
-        "total_edges": len(edges),
-        "orphan_count": role_counts.get("orphan", 0),
-        "hub_count": role_counts.get("hub", 0),
-        "entry_count": role_counts.get("entry", 0),
-        "shared_count": role_counts.get("shared", 0),
-        "languages": dict(sorted(lang_counts.items(), key=lambda x: x[1], reverse=True)),
-        "top_hubs": [{"id": n["id"], "name": n["name"], "indegree": n["indegree"]} for n in top_hubs],
-        "role_counts": dict(role_counts),
+        _analyze_cache.set(cache_key, result)
+        finish_job(job_id)
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        fail_job(job_id)
+        raise HTTPException(500, f"Analysis failed: {str(e)}")
+
+
+@app.get("/analyze-status/{job_id}")
+async def analyze_status(job_id: str):
+    job = _analyze_jobs.get(job_id)
+    if not job:
+        return {"status": "not_found"}
+    return {
+        "job_id": job_id,
+        "status": job["status"],
+        "stage": job["stage"],
+        "progress": job["progress"],
     }
-
-    vitals = compute_codebase_vitals(nodes, edges, stats)
-    contributor_compass = compute_contributor_compass(nodes, edges)
-    repo_dna = compute_repo_dna(
-        owner, repo, summary, stats, vitals, nodes, edges, contributor_compass,
-    )
-
-    result = {
-        "graph": {"nodes": nodes, "links": edges},
-        "summary": summary,
-        "stats": stats,
-        "vitals": vitals,
-        "contributor_compass": contributor_compass,
-        "repo_dna": repo_dna,
-        "meta": {
-            "owner": owner,
-            "repo": repo,
-            "url": f"https://github.com/{owner}/{repo}",
-            "truncated": truncated,
-            "files_fetched_for_deps": len(contents),
-        },
-    }
-
-    _analyze_cache.set(cache_key, result)
-    return result
 
 
 @app.post("/ask")
@@ -1587,6 +1645,7 @@ async def blast_share(req: BlastShareRequest):
     """
     owner, repo = parse_github_url(req.repo_url)
     cache_key   = f"{owner}/{repo}"
+    track_event("blast_views", label=req.file_path, repo=f"{owner}/{repo}")
 
     cached = _analyze_cache.get(cache_key)
     if not cached:
@@ -1622,8 +1681,9 @@ async def blast_share(req: BlastShareRequest):
 @app.post("/repo-dna-share")
 async def repo_dna_share(req: RepoDnaShareRequest):
     """Compact DNA card payload for shareable /dna pages (uses analyze cache)."""
-    owner, repo = parse_github_url(req.repo_url)
-    cache_key = f"{owner}/{repo}"
+    owner, repo_parsed = parse_github_url(req.repo_url)
+    cache_key = f"{owner}/{repo_parsed}"
+    track_event("dna_views", repo=f"{owner}/{repo_parsed}")
 
     cached = _analyze_cache.get(cache_key)
     if not cached:
@@ -1633,9 +1693,9 @@ async def repo_dna_share(req: RepoDnaShareRequest):
         )
 
     return {
-        "repo": f"{owner}/{repo}",
-        "repo_url": f"https://github.com/{owner}/{repo}",
-        "project_name": cached["summary"].get("project_name", repo),
+        "repo": f"{owner}/{repo_parsed}",
+        "repo_url": f"https://github.com/{owner}/{repo_parsed}",
+        "project_name": cached["summary"].get("project_name", repo_parsed),
         "tagline": cached["summary"].get("tagline", ""),
         "summary": cached["summary"],
         "stats": cached["stats"],
@@ -1649,6 +1709,7 @@ async def repo_dna_share(req: RepoDnaShareRequest):
 @app.post("/generate-readme")
 async def generate_readme(req: ReadmeRequest):
     owner, repo = parse_github_url(req.repo_url)
+    track_event("shares", label="readme", repo=f"{owner}/{repo}")
 
     tech_str     = ", ".join(req.tech_stack) if req.tech_stack else "unknown"
     lang_str     = "\n".join(
@@ -1671,38 +1732,48 @@ async def generate_readme(req: ReadmeRequest):
     }
     lang_color = lang_badge_colors.get(primary_lang, "6B7280")
 
-    prompt = f"""Write a world-class README.md for the GitHub repository {owner}/{repo}.
+    tree_sample = req.file_tree_summary[:800] if req.file_tree_summary else ""
 
-REPOSITORY DATA (use all of it, be specific):
-- Project name: {req.project_name}
+    modules_detail = (req.key_modules or [])
+    top_hubs_list = (req.top_hubs or [])
+    insights_list = (req.insights or [])
+
+    prompt = f"""Write a README.md for the GitHub repository {owner}/{repo}.
+
+REPOSITORY DATA:
+- Project: {req.project_name}
 - Tagline: {req.tagline}
 - Description: {req.description}
-- Architecture pattern: {req.architecture}
-- Complexity: {req.complexity}
+- Architecture: {req.architecture}
 - Primary language: {primary_lang} (badge color: #{lang_color})
 - Tech stack: {tech_str}
 - Entry points: {entry_str}
-- Total files: {req.total_files} | Dependency edges: {req.total_edges} | Orphan files: {req.orphan_count}
-- Languages breakdown:
-{lang_str}
-- Key modules:
-{modules_str}
-- Most-imported hub files:
-{top_hubs_str}
-- Codebase insights:
-{insights_str}
-- File tree sample (first 40 paths):
-{req.file_tree_summary[:800]}
+- {req.total_files} files · {req.total_edges} edges · {req.orphan_count} orphans
+- Complexity: {req.complexity}
 
-BADGE REQUIREMENTS — include all of these in the centered header:
-1. Language badge: ![{primary_lang}](https://img.shields.io/badge/{primary_lang}-#{lang_color}?style=flat-square&logo={primary_lang}&logoColor=white)
+LANGUAGES:
+{lang_str}
+
+KEY MODULES:
+{modules_str}
+
+MOST-IMPORTED FILES:
+{top_hubs_str}
+
+INSIGHTS:
+{insights_str}
+
+FILE TREE:
+{tree_sample}
+
+Include these badges after the description:
+1. Language: ![{primary_lang}](https://img.shields.io/badge/{primary_lang}-#{lang_color}?style=flat-square&logo={primary_lang}&logoColor=white)
 2. License: ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 3. Stars: ![Stars](https://img.shields.io/github/stars/{owner}/{repo}?style=flat-square&color=yellow)
 4. Last commit: ![Last Commit](https://img.shields.io/github/last-commit/{owner}/{repo}?style=flat-square)
 5. Issues: ![Issues](https://img.shields.io/github/issues/{owner}/{repo}?style=flat-square)
-6. Add 1-2 more relevant badges based on the tech stack (e.g. FastAPI, React, Docker, etc.)
 
-Follow the system instructions exactly. Output only the raw README.md content."""
+Use the actual module and file names from the data above. Output only the raw README.md content."""
 
     readme_md = await groq(
         system=README_SYSTEM,
@@ -1718,6 +1789,7 @@ Follow the system instructions exactly. Output only the raw README.md content.""
 async def generate_architecture(req: ArchitectureRequest):
     owner, repo = parse_github_url(req.repo_url)
     cache_key = f"{owner}/{repo}"
+    track_event("shares", label="architecture", repo=f"{owner}/{repo}")
 
     if not req.force_refresh:
         cached = _arch_cache.get(cache_key)

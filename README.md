@@ -1,180 +1,217 @@
-<div align="center">
-
 # Repogami
 
-*Structural intelligence for any GitHub repo — paste a URL, see the gravity wells.*
+Paste a GitHub URL, get a 3D graph of who depends on who, where the choke points are, and what breaks if you touch a file.
 
-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)](backend/main.py)
-[![Next.js](https://img.shields.io/badge/UI-Next.js-000?style=flat-square&logo=next.js&logoColor=white)](frontend/)
+![demo](https://res.cloudinary.com/dkbvknwcu/image/upload/v1779908725/first_jmr4lm.gif)
 
-</div>
+## What it does
 
----
+Open a repo → see it as a force-directed graph. Every file is a node, every import is an edge. Files are colored by role: entry points, hubs (imported by everyone), orphans (imported by no one), config, and leaf files.
 
-<div align="center">
-  <img src="https://res.cloudinary.com/dkbvknwcu/image/upload/v1779908725/first_jmr4lm.gif" alt="Repogami — paste a URL, watch the graph come alive" />
-</div>
+Click any file. You get:
+- **Touch Index** — if I change this file, what % of the graph ripples?
+- **Blast Radius** — concentric rings of affected files, shareable as a link
+- **Ask AI** — "what does this file do?" scoped to the file + its neighbors
 
----
+There is also a **Repo DNA** page — a personality type for your codebase (Fortress, Gravity Well, Spaghetti Junction, etc.) with a health score and viral share card.
 
-## Why actually open this
+## Routes
 
-You are about to edit a file in a repo you did not build. The question is not "where is it defined?" — you can grep that. The question is:
+| Path | What |
+|------|------|
+| `/` | Paste a URL, explore the graph |
+| `/dna?repo=owner/repo` | Shareable repo personality card |
+| `/blast?repo=owner/repo&file=path` | Shareable blast radius snapshot |
 
-**If I change this file, how much of the system moves with me?**
-
-Repogami answers that in one session:
-
-| Moment | What you get |
-|--------|----------------|
-| **Before the PR** | **Touch Index** — % of the graph in blast radius for the file under your cursor |
-| **Before the refactor** | **Blast radius rings** + shareable `/blast` link for the team |
-| **First day on the repo** | **Contributor Compass** — 5–7 files to read, in order (entry → spine → hub) |
-| **Twitter / Slack** | **Repo DNA** — personality, health score, viral headline, one-click copy for socials |
-| **Tech lead review** | **Vitals + Smell Radar + Refactor Playbook** — deterministic, no LLM hand-waving |
-
-No indexer. No org setup. No "request demo." Public URL → live graph.
-
----
-
-## What ships today
-
-- **3D dependency graph** — force-directed, role-colored (hub, entry, orphan, leaf, config)
-- **Touch Index** — instant ripple % per file (reverse import BFS)
-- **Blast radius** — risk score, concentric rings, permanent `/blast?repo=…&file=…` links
-- **Repo DNA** — Fortress / Gravity Well / Island Archipelago / Spaghetti / Ouroboros + share pack
-- **Contributor Compass** — cold-start reading order from graph topology
-- **Codebase Vitals** — 0–100 health, smell radar, refactor playbook (pure graph math)
-- **Architecture diagram** — 2-pass LLM (explain → structured JSON graph)
-- **Ask AI** — scoped to selected file + local subgraph
-- **README generator** — repo-specific, shields.io-ready
-
----
-
-## Social loop (built for impact)
-
-1. Analyze `owner/repo` (try `vercel/next.js`, `trpc/trpc`, `shadcn-ui/ui`).
-2. Open **Project** tab → **Share Pack** → copy tweet or DNA link.
-3. Post: *"🕳️ vercel/next.js — Gravity Well. Health 61/100. God file: X (↑47 deps)"*
-4. Teammates open `/dna?repo=owner/repo` or `/?url=owner/repo` — no account.
-
-That is the growth mechanic: **shareable structural receipts**, not another dashboard.
-
-### Before you post (launch checklist)
-
-- [ ] Deploy frontend + backend with `NEXT_PUBLIC_API_URL` pointing at your API (not `localhost`).
-- [ ] Set `GITHUB_TOKEN` so demos do not hit rate limits mid-thread.
-- [ ] Run one **public** repo you know well; confirm **Share Pack** shows DNA + full URL in copied tweet.
-- [ ] Open `/dna?repo=owner/repo` in an incognito window — card should load.
-- [ ] Click **Explore graph** or share `/?url=owner/repo` — should auto-analyze on landing.
-- [ ] Record a 30–45s screen capture: paste URL → graph spins up → click a hub → **Touch Index** → **Share Pack** copy.
-- [ ] Pin the DNA link or main app URL in the thread; ask *"what's your repo's health score?"*
-
-**Post angles that land:** roast your own repo · compare two OSS libs · "first 5 files to read" compass · hub file with highest Touch Index.
-
----
-
-## Quick start
-
-### Prerequisites
-
-- Python 3.8+
-- Node.js 18+
-- Optional: `GITHUB_TOKEN` (5000 req/hr vs 60), `GROQ_API_KEY` (AI features — [console.groq.com](https://console.groq.com))
-
-### Install
+## Run locally
 
 ```bash
 pip install -r backend/requirements.txt
 npm install --prefix frontend
+
+# terminal 1
+cd backend && uvicorn main:app --reload
+
+# terminal 2
+cd frontend && npm run dev
 ```
 
-Create `.env` in project root (optional):
+Options in `.env`:
+- `GITHUB_TOKEN` — higher rate limit for file fetching
+- `GROQ_API_KEY` — enables AI features (summaries, chat, README gen, arch diagrams)
+- `NEXT_PUBLIC_API_URL` — defaults to localhost:8000
 
-```env
-GITHUB_TOKEN=ghp_...
-GROQ_API_KEY=gsk_...
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-### Run
-
-```bash
-# Terminal 1 — API
-uvicorn main:app --reload
-
-# Terminal 2 — UI
-npm run dev 
-```
-
-Open [http://localhost:3000](http://localhost:3000). Paste `owner/repo` or a full GitHub URL.
-
-**Share routes:**
-
-- Repo DNA card: `http://localhost:3000/dna?repo=owner/repo`
-- Blast radius: `http://localhost:3000/blast?repo=owner/repo&file=path/to/file.ts`
-
----
-
-## API (v3)
-
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /analyze` | Full graph + vitals + DNA + compass |
-| `POST /blast-radius` | Deep blast for selected node |
-| `POST /blast-share` | Shareable blast payload (cache) |
-| `POST /repo-dna-share` | Shareable DNA card (cache) |
-| `POST /ask` | File-scoped AI Q&A |
-| `POST /generate-architecture` | Layered arch graph |
-| `POST /generate-readme` | README.md draft |
-
----
-
-## Architecture
-
-<div align="center">
-  <img src="https://github.com/DILIP-SHEESH/dump/blob/94083bb26232114ad9a90ae00e888aa3b1a3c9fa/last.gif" alt="Repogami — Architecture diagram" />
-</div>
+## How it works (quick overview)
 
 ```
-GitHub Trees API + raw file fetch
-        ↓
-Import graph (regex parsers: TS/JS, Python, Go, Rust, …)
-        ↓
-Graph intelligence (roles, vitals, DNA, compass, touch index)
-        ↓
-Groq (summaries, arch, ask, README only)
-        ↓
-Next.js — 3D graph, sidebar intelligence, share pages
+GitHub Trees API → file tree
+  → regex import parsers (TS/JS, Python, Go, Rust, Ruby, PHP, Java)
+  → graph metrics (indegree, outdegree, roles, BFS blast radius)
+  → Groq (only for summaries, chat, readme, arch diagrams)
+  → Next.js renders the 3D graph + side panels
 ```
 
-Monorepo: `backend/main.py` + `frontend/` (Next.js App Router).
+All graph analysis is deterministic — no LLM. AI is only used for generated text.
 
----
+## How each feature works (deep dive)
+
+### 1. Dependency graph & file roles
+
+```
+User pastes owner/repo
+  → POST /analyze
+    → GitHub Trees API fetches the full file tree (recursive)
+    → filters: skip node_modules, .git, binaries; keep source + config
+    → fetches file contents from raw.githubusercontent.com (batched, 80 at a time)
+    → extract_deps() runs regex parsers per language:
+        - TS/JS: import/export/require() statements
+        - Python: from/import with relative paths
+        - Go: quoted import paths mapped to files
+        - Rust: mod declarations
+        - Ruby: require_relative
+        - PHP: require/include
+        - Java: import statements
+    → build edge list: [{source: "a.ts", target: "b.ts"}, ...]
+    → compute_metrics() calculates indegree/outdegree per file
+    → get_role() classifies each file:
+        - entry:  indegree=0, outdegree>0  (nothing imports it, it imports others)
+        - hub:    indegree>=4              (imported by many — change ripples wide)
+        - shared: indegree>=2              (imported by a few)
+        - orphan: indegree=0, outdegree=0  (disconnected — likely dead)
+        - leaf:   everything else
+        - config: .json, .yaml, .env, etc.
+    → compute_codebase_vitals() runs pure graph math:
+        - health score 0-100 (penalizes orphans, hub concentration, coupling, cycles)
+        - smell radar (orphan swarms, hub monopolies, god files, mutual imports)
+        - refactor playbook (prioritized actions)
+    → compute_contributor_compass() traces entry → spine → hub
+    → compute_repo_dna() picks a personality type + headline
+    → caches result under owner/repo (1 hour TTL)
+  → returns everything to frontend
+    → ForceGraph3D renders nodes colored by role
+    → Sidebar shows vitals, compass, smells, playbook
+```
+
+### 2. Touch Index
+
+```
+User clicks a file node in the 3D graph
+  → handleNodeClick() runs in the browser:
+    → highlights the node and its immediate neighbors
+    → flies camera to the node position
+    → calls /ask if AI panel is open (see below)
+  → Sidebar shows TouchIndex component:
+    → compute_touch_index() runs reverse BFS:
+        start at clicked file
+        follow incoming edges (who imports this file?)
+        repeat up to 6 hops
+        count total affected files
+        return risk label: Nuclear (>=35%) / High / Moderate / Contained
+    → displayed as: "Touching this file ripples into N others (X% of graph)"
+```
+
+### 3. Blast radius
+
+```
+User clicks "Blast Radius" in sidebar
+  → blast_radius_bfs() runs forward BFS:
+    start at selected file
+    follow outgoing edges (who does this file import?)
+    repeat up to configurable depth (default 5)
+    collect all reachable files → "affected set"
+  → frontend shows:
+    - risk score with color
+    - concentric rings (hop 0, 1, 2, 3...)
+    - share button → POST /blast-share → saves to cache → returns /blast link
+  → /blast?repo=owner/repo&file=path page:
+    - loads cached data
+    - renders same risk visual + list of affected files
+    - no account needed, link works forever (until cache eviction)
+```
+
+### 4. Repo DNA + share card
+
+```
+User opens Project tab → Share Pack
+  → POST /repo-dna-share → caches the DNA snapshot
+  → returns share URL: /dna?repo=owner/repo
+  → DNA page renders:
+    - personality type + emoji (Fortress 🏰, Gravity Well 🕳️, etc.)
+    - health score with color bar
+    - viral headline (e.g. "X is imported by Y files (Z% of graph)")
+    - share tweet (pre-formatted, one-click copy)
+    - stats line: files, hubs, orphans, mutual imports
+    - contributor compass preview (first 3 files to read)
+  → one-click copy for Twitter/social posts
+```
+
+### 5. Architecture diagram
+
+```
+User clicks "Generate Architecture" in sidebar
+  → POST /generate-architecture
+  → Pass 1 (model: llama-3.1-8b-instant):
+    - LLM receives: file tree, description, tech stack, entry points, hubs
+    - prompt: "Explain this repo's architecture in plain English"
+    - returns: multi-paragraph explanation (8-14 sections)
+  → Pass 2 (model: llama-3.3-70b-versatile):
+    - LLM receives: the explanation + file tree
+    - prompt: "Convert this into a JSON graph with nodes, edges, groups"
+    - returns: structured JSON matching a schema
+  → validates: removes edges referencing nonexistent nodes, deduplicates
+  → caches result
+  → frontend renders ArchitectureDiagram component:
+    - layered layout with horizontal bands (API / Services / Data / etc.)
+    - nodes styled as rounded pills with shadows
+    - edges colored by style (solid=dependency, dashed=async, thick=critical)
+    - groups rendered as labeled horizontal layers
+    - minimap for navigation
+```
+
+### 6. Ask AI
+
+```
+User selects a file, types a question
+  → POST /ask
+  → backend sends to Groq (llama-3.1-8b-instant):
+    context:
+      - file path + full content (up to 8000 chars)
+      - subgraph: all immediate neighbors (who imports it, who it imports)
+      - question
+    system prompt: "You are reviewing a specific file. Answer concisely."
+  → returns answer text
+  → frontend displays in sidebar chat panel
+  → no caching — every question hits the API
+```
+
+### 7. README generator
+
+```
+User clicks "Generate README"
+  → POST /generate-readme
+  → backend assembles context:
+    - project name, tagline, description
+    - tech stack list
+    - architecture pattern
+    - entry points, key modules
+    - file tree summary (first 100 paths)
+    - top hubs (most-imported files)
+    - language breakdown
+    - total file/edge counts
+  → sends to Groq (llama-3.1-8b-instant) with README system prompt
+  → returns markdown with shields.io badges, ASCII arch diagram, tables
+  → frontend shows preview; user can copy or download
+```
 
 ## Project structure
 
 ```
-.
-├── backend/
-│   ├── main.py          # FastAPI — all analysis + AI routes
-│   └── requirements.txt
-├── frontend/
-│   ├── app/             # page, blast, dna
-│   ├── components/      # graph, sidebar, share pack
-│   └── lib/touchIndex.ts
-└── README.md
+backend/main.py          — FastAPI server, all routes (~1800 lines)
+frontend/app/            — Next.js pages (home, dna, blast)
+frontend/components/     — GraphCanvas, Sidebar, SharePack, ArchitectureDiagram
+frontend/lib/            — touchIndex.ts (browser-side BFS for instant ripple %)
 ```
-
----
-
-## Contributing
-
-Fork → branch → PR. Keep graph intelligence deterministic where possible; reserve LLM for explanation and prose.
-
----
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT

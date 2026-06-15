@@ -45,9 +45,25 @@ export default function RepoGami() {
   const [archLoading, setArchLoading]     = useState(false);
   const [archCanvasOpen, setArchCanvasOpen] = useState(false);
 
+  const [totals, setTotals]               = useState<{views: number; analyses: number} | null>(null);
   const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
   const deepLinkRan = useRef(false);
+
+  useEffect(() => {
+    fetch(`${API}/track`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'views' }),
+    }).catch(() => {});
+    fetch(`${API}/stats/totals`).then(r => r.json()).then(setTotals).catch(() => {});
+  }, []);
+
+  const trackEvent = (type: string, label = '', repo = '') => {
+    fetch(`${API}/track`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, label, repo }),
+    }).catch(() => {});
+  };
 
   const analyze = useCallback(async (e?: React.FormEvent, urlOverride?: string) => {
     if (e) e.preventDefault();
@@ -91,6 +107,7 @@ export default function RepoGami() {
       setData(result);
       setAnalyzedUrl(target);
       setSidebarTab('summary');
+      trackEvent('analyses', '', target);
       if (typeof window !== 'undefined') {
         const u = new URL(window.location.href);
         u.searchParams.set('url', target);
@@ -109,7 +126,6 @@ export default function RepoGami() {
     }
   }, [url, API]);
 
-  // Deep link: /?url=owner/repo (from DNA, blast, or your social post)
   useEffect(() => {
     if (deepLinkRan.current || typeof window === 'undefined') return;
     const q = new URLSearchParams(window.location.search).get('url')?.trim();
@@ -118,9 +134,10 @@ export default function RepoGami() {
     analyze(undefined, q);
   }, [analyze]);
 
-  const handleNodeClick = useCallback((node: GNode) => {
+  const handleNodeClick = (node: GNode) => {
     setSelectedNode(node); setAiAnswer(''); setAiQuestion('');
     setBlastMode(false); setSidebarTab('node');
+    trackEvent('node_clicks', node.name, analyzedUrl);
 
     if (window.innerWidth <= 992) { setMobileSidebarOpen(true); setMobileTreeOpen(false); }
     if (!data) return;
@@ -140,9 +157,9 @@ export default function RepoGami() {
         { x: node.x, y: node.y, z: node.z || 0 }, 800
       );
     }
-  }, [data]);
+  }
 
-  const handleAsk = useCallback(async (qOverride?: string) => {
+  const handleAsk = async (qOverride?: string) => {
     const question = qOverride || aiQuestion;
     if (!selectedNode || !question.trim() || !data) return;
     setAiLoading(true); setSidebarTab('ai');
@@ -168,9 +185,9 @@ export default function RepoGami() {
       setAiAnswer(result.answer);
     } catch { setAiAnswer('Network error connecting to AI endpoint.'); }
     finally { setAiLoading(false); }
-  }, [selectedNode, aiQuestion, data, analyzedUrl, API]);
+  }
 
-  const handleInspectIds = useCallback((ids: string[]) => {
+  const handleInspectIds = (ids: string[]) => {
     if (!data || ids.length === 0) return;
     const hn = new Set<string>(ids);
     const hl = new Set<string>();
@@ -196,15 +213,15 @@ export default function RepoGami() {
       }
     }
     if (window.innerWidth <= 992) setMobileSidebarOpen(true);
-  }, [data]);
+  }
 
-  const runBlast = useCallback(() => {
+  const runBlast = () => {
     if (!selectedNode || !data) return;
     setBlastLoading(true);
     setTimeout(() => { setBlastMode(true); setBlastLoading(false); }, 500);
-  }, [selectedNode, data]);
+  }
 
-  const generateReadme = useCallback(async () => {
+  const generateReadme = async () => {
     if (!data) return;
     setReadmeLoading(true); setReadme('');
     try {
@@ -223,10 +240,9 @@ export default function RepoGami() {
       setReadme(result.readme);
     } catch { setReadme('Failed to generate README.'); }
     finally { setReadmeLoading(false); }
-  }, [data, analyzedUrl, API]);
+  }
 
-  // ── Architecture ─────────────────────────────────────────────────────────────
-  const generateArchitecture = useCallback(async () => {
+  const generateArchitecture = async () => {
     if (!data) return;
     setArchLoading(true); setArch(null);
     try {
@@ -243,7 +259,7 @@ export default function RepoGami() {
       setArch(result); setArchCanvasOpen(true);
     } catch { setArch(null); }
     finally { setArchLoading(false); }
-  }, [data, analyzedUrl, API]);
+  }
 
   return (
     <div style={{
@@ -288,7 +304,6 @@ export default function RepoGami() {
             </form>
           </div>
 
-          {/* Action Button */}
           <button type="button" onClick={analyze} className="rg-submit-btn" disabled={loading || !url.trim()}>
             {loading ? (
                <><i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} /> <span className="btn-text-full">Analyzing...</span></>
@@ -297,7 +312,6 @@ export default function RepoGami() {
             )}
           </button>
 
-          {/* Right actions (Stats & Graph view toggles) */}
           {data && (
             <div className="rg-header-right hide-tablet" style={{ animation: 'fade-up 0.4s ease' }}>
               <div className="rg-header-sep" />
@@ -345,7 +359,6 @@ export default function RepoGami() {
         </header>
       </div>
 
-      {/* ── ERROR TOAST ──────────────────────────────────────────────────── */}
       {error && (
         <div style={{
           position: 'absolute', top: 90, left: '50%', transform: 'translateX(-50%)',
@@ -368,7 +381,6 @@ export default function RepoGami() {
         </div>
       )}
 
-      {/* ── WORKSPACE ────────────────────────────────────────────────────── */}
       <div className="rg-workspace">
 
         <div
@@ -376,14 +388,12 @@ export default function RepoGami() {
           onClick={() => { setMobileTreeOpen(false); setMobileSidebarOpen(false); }}
         />
 
-        {/* File tree */}
         {data && showTree && (
           <div className={`rg-file-tree${mobileTreeOpen ? ' open' : ''}`}>
             <FileTree nodes={data.graph.nodes} selectedId={selectedNode?.id} onSelect={handleNodeClick} />
           </div>
         )}
 
-        {/* Graph canvas */}
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: T.bg }}>
           {!data && !loading && (
             <EmptyState onTryRepo={(repo) => analyze(undefined, repo)} />
@@ -400,7 +410,6 @@ export default function RepoGami() {
                 graphRef={graphRef}
               />
 
-              {/* Bottom info strip */}
               <div className="rg-graph-strip">
                 <span>
                   <span style={{ fontWeight: 600, color: T.text }}>{data.stats.total_files}</span> nodes
@@ -445,7 +454,6 @@ export default function RepoGami() {
           )}
         </div>
 
-        {/* Sidebar - ONLY RENDERS IF DATA EXISTS */}
         {data && (
           <div className={`rg-sidebar-shell${mobileSidebarOpen ? ' open' : ''}`}>
             <SidebarShell
@@ -469,7 +477,6 @@ export default function RepoGami() {
         )}
       </div>
 
-      {/* ── ARCH OVERLAY ─────────────────────────────────────────────────── */}
       {archCanvasOpen && arch && (
   <ArchitectureDiagram
     arch={arch}
@@ -478,6 +485,17 @@ export default function RepoGami() {
     analysisNodes={data?.graph?.nodes ?? []}
   />
 )}
+
+      {totals && (
+        <div style={{
+          position: 'fixed', bottom: 12, right: 14,
+          fontSize: 11, color: T.textDim, opacity: 0.5,
+          fontFamily: T.mono, pointerEvents: 'none', zIndex: 0,
+          userSelect: 'none',
+        }}>
+          {totals.views.toLocaleString()} 
+        </div>
+      )}
     </div>
   );
 }

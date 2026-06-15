@@ -1,9 +1,7 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, Suspense } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-
-// ─── Minimal inline styles (no theme import needed — standalone page) ─────────
 
 const S = {
   bg:        '#0a0a0a',
@@ -25,8 +23,6 @@ const RING_COLORS = [
   { bg: 'rgba(59,130,246,0.08)',  border: 'rgba(59,130,246,0.25)',  text: '#3b82f6' },
 ];
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 interface RingFile {
   id: string; name: string; path: string;
   role: string; is_hub: boolean; is_entry: boolean; is_test: boolean;
@@ -41,8 +37,6 @@ interface BlastResult {
   hub_files: string[]; entry_files: string[];
   summary: string;
 }
-
-// ─── Risk arc ─────────────────────────────────────────────────────────────────
 
 function RiskArc({ score, color, label }: { score: number; color: string; label: string }) {
   const [anim, setAnim] = useState(0);
@@ -75,8 +69,6 @@ function RiskArc({ score, color, label }: { score: number; color: string; label:
   );
 }
 
-// ─── Inner component that uses useSearchParams ─────────────────────────────────
-
 function BlastPageInner() {
   const params  = useSearchParams();
   const repo    = params.get('repo') ?? '';
@@ -90,48 +82,59 @@ function BlastPageInner() {
 
   const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-  // Determine risk color from label
   const labelColor = (label: string) =>
     label === 'Critical' ? '#ef4444'
     : label === 'High'   ? '#f97316'
     : label === 'Medium' ? '#eab308'
     : '#22c55e';
 
-  const loadFull = useCallback(async () => {
-    if (!repo || !file) return;
-    setStatus('loading');
+  useEffect(() => {
+    async function loadFull() {
+      if (!repo || !file) return;
+      setStatus('loading');
 
-    try {
-      // Step 1: ensure repo is analyzed (cache hit is instant)
-      const analyzeRes = await fetch(`${API}/analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repo_url: repo }),
-      });
-      if (!analyzeRes.ok) throw new Error('Analyze failed');
-      const analyzeData = await analyzeRes.json();
+      try {
+        const analyzeRes = await fetch(`${API}/analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ repo_url: repo }),
+        });
+        if (!analyzeRes.ok) throw new Error('Analyze failed');
+        const analyzeData = await analyzeRes.json();
 
-      // Step 2: blast share
-      const blastRes = await fetch(`${API}/blast-share`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repo_url: repo, file_path: file, depth: 5 }),
-      });
-      if (!blastRes.ok) throw new Error('Blast failed');
-      const blastData: BlastResult = await blastRes.json();
-      setResult(blastData);
-      setStatus('done');
-    } catch {
-      setStatus('error');
+        const blastRes = await fetch(`${API}/blast-share`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ repo_url: repo, file_path: file, depth: 5 }),
+        });
+        if (!blastRes.ok) throw new Error('Blast failed');
+        const blastData: BlastResult = await blastRes.json();
+        setResult(blastData);
+        setStatus('done');
+      } catch {
+        setStatus('error');
+      }
     }
+    loadFull();
   }, [repo, file, API]);
 
-  useEffect(() => { loadFull(); }, [loadFull]);
+  useEffect(() => {
+    if (repo && file) {
+      fetch(`${API}/track`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'blast_views', label: file, repo }),
+      }).catch(() => {});
+    }
+  }, [repo, file]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(window.location.href).then(() => {
       setCopied(true); setTimeout(() => setCopied(false), 2000);
     });
+    fetch(`${API}/track`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'shares', label: 'blast_link', repo }),
+    }).catch(() => {});
   };
 
   const fileName = file.split('/').pop() ?? file;
@@ -146,7 +149,6 @@ function BlastPageInner() {
     }}>
       <div style={{ maxWidth: 680, margin: '0 auto' }}>
 
-        {/* ── Logo strip ─────────────────────────────────────────────── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 40 }}>
           <a href="/" style={{
             display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none',
@@ -162,7 +164,6 @@ function BlastPageInner() {
           <span style={{ fontSize: 13, color: S.textDim, marginLeft: 4 }}>/ Blast Radius</span>
         </div>
 
-        {/* ── File header ────────────────────────────────────────────── */}
         <div style={{
           padding: '24px', borderRadius: 16,
           background: S.surface, border: `1px solid ${S.border}`,
@@ -199,7 +200,6 @@ function BlastPageInner() {
             </div>
           </div>
 
-          {/* Status */}
           {status === 'loading' && (
             <div style={{
               marginTop: 20, padding: '12px 16px', borderRadius: 10,
@@ -216,10 +216,8 @@ function BlastPageInner() {
           )}
         </div>
 
-        {/* ── Full results ────────────────────────────────────────────── */}
         {result && status === 'done' && (
           <>
-            {/* Stats row */}
             <div style={{
               display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24,
             }}>
@@ -243,7 +241,6 @@ function BlastPageInner() {
               ))}
             </div>
 
-            {/* Warning */}
             {(result.hub_files.length > 0 || result.entry_files.length > 0) && (
               <div style={{
                 padding: '14px 16px', borderRadius: 12, marginBottom: 20,
@@ -256,9 +253,7 @@ function BlastPageInner() {
               </div>
             )}
 
-            {/* Rings */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
-              {/* Origin */}
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 12,
                 padding: '14px 18px', borderRadius: 14,
@@ -316,7 +311,6 @@ function BlastPageInner() {
               })}
             </div>
 
-            {/* Summary */}
             <div style={{
               padding: '14px 16px', borderRadius: 12, marginBottom: 24,
               background: S.surface, border: `1px solid ${S.border}`,
@@ -327,7 +321,6 @@ function BlastPageInner() {
           </>
         )}
 
-        {/* ── Actions ─────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <button
             onClick={handleCopy}
@@ -357,7 +350,6 @@ function BlastPageInner() {
           </a>
         </div>
 
-        {/* Footer */}
         <div style={{ marginTop: 48, textAlign: 'center', fontSize: 12, color: S.textDim }}>
           Generated by{' '}
           <a href="/" style={{ color: S.textMuted, textDecoration: 'none', fontWeight: 600 }}>Repogami</a>
@@ -371,8 +363,6 @@ function BlastPageInner() {
     </div>
   );
 }
-
-// ─── Page export with Suspense boundary ──────────────────────────────────────
 
 export default function BlastPage() {
   return (
